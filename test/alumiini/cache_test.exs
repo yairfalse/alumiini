@@ -3,15 +3,7 @@ defmodule Alumiini.CacheTest do
 
   alias Alumiini.Cache
 
-  setup_all do
-    # Start cache if not already started
-    case Cache.start_link() do
-      {:ok, _pid} -> :ok
-      {:error, {:already_started, _pid}} -> :ok
-    end
-
-    :ok
-  end
+  # Application is started by test_helper.exs
 
   describe "commits cache" do
     test "stores and retrieves commit for repo" do
