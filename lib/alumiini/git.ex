@@ -73,22 +73,30 @@ defmodule Alumiini.Git do
       "depth" => depth
     }
 
-    send_request(state.port, request)
-    {:noreply, %{state | caller: from}}
+    case send_request(state.port, request) do
+      :ok -> {:noreply, %{state | caller: from}}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
   end
 
   @impl true
   def handle_call({:files, path, subpath}, from, state) do
     request = %{"op" => "files", "path" => path, "subpath" => subpath}
-    send_request(state.port, request)
-    {:noreply, %{state | caller: from}}
+
+    case send_request(state.port, request) do
+      :ok -> {:noreply, %{state | caller: from}}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
   end
 
   @impl true
   def handle_call({:read, path, file}, from, state) do
     request = %{"op" => "read", "path" => path, "file" => file}
-    send_request(state.port, request)
-    {:noreply, %{state | caller: from}}
+
+    case send_request(state.port, request) do
+      :ok -> {:noreply, %{state | caller: from}}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
   end
 
   @impl true
@@ -159,10 +167,11 @@ defmodule Alumiini.Git do
     case Msgpax.pack(request) do
       {:ok, data} ->
         Port.command(port, data)
+        :ok
 
       {:error, reason} ->
         Logger.error("Failed to pack msgpack request: #{inspect(reason)}")
-        :error
+        {:error, {:msgpack_pack_error, reason}}
     end
   end
 

@@ -14,7 +14,6 @@ defmodule Alumiini.Application do
 
   @impl true
   def start(_type, _args) do
-    # Git Port GenServer (communicates with Rust binary)
     children =
       [
         # ETS cache for commits, resources, sync state
