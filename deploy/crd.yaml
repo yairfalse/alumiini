@@ -1,0 +1,108 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: gitrepositories.alumiini.io
+spec:
+  group: alumiini.io
+  names:
+    kind: GitRepository
+    listKind: GitRepositoryList
+    plural: gitrepositories
+    singular: gitrepository
+    shortNames:
+      - gitrepo
+      - gr
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - url
+              properties:
+                url:
+                  type: string
+                  description: Git repository URL
+                branch:
+                  type: string
+                  default: main
+                  description: Branch to sync
+                path:
+                  type: string
+                  description: Path within repository (optional)
+                targetNamespace:
+                  type: string
+                  description: Namespace to apply manifests to (defaults to resource namespace)
+                interval:
+                  type: string
+                  default: "5m"
+                  description: Sync interval (e.g., "5m", "1h")
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum:
+                    - Initializing
+                    - Syncing
+                    - Synced
+                    - Failed
+                observedGeneration:
+                  type: integer
+                  format: int64
+                lastAppliedCommit:
+                  type: string
+                  description: SHA of last applied commit
+                lastSyncTime:
+                  type: string
+                  format: date-time
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: URL
+          type: string
+          jsonPath: .spec.url
+        - name: Branch
+          type: string
+          jsonPath: .spec.branch
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Commit
+          type: string
+          jsonPath: .status.lastAppliedCommit
+          priority: 1
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
