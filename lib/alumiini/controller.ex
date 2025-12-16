@@ -287,7 +287,8 @@ defmodule Alumiini.Controller do
       [_, num, "s"] -> String.to_integer(num) * 1_000
       [_, num, "m"] -> String.to_integer(num) * 60 * 1_000
       [_, num, "h"] -> String.to_integer(num) * 60 * 60 * 1_000
-      _ -> 5 * 60 * 1_000  # Default 5 minutes
+      # Default 5 minutes
+      _ -> 5 * 60 * 1_000
     end
   end
 

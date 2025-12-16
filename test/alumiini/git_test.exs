@@ -44,15 +44,17 @@ defmodule Alumiini.GitTest do
         path = "/tmp/alumiini-test-#{:rand.uniform(100_000)}"
 
         try do
-          result = Git.sync(
-            "https://github.com/octocat/Hello-World.git",
-            "master",
-            path
-          )
+          result =
+            Git.sync(
+              "https://github.com/octocat/Hello-World.git",
+              "master",
+              path
+            )
 
           assert {:ok, commit_sha} = result
           assert is_binary(commit_sha)
-          assert String.length(commit_sha) == 40  # SHA-1 hash
+          # SHA-1 hash
+          assert String.length(commit_sha) == 40
           assert File.exists?(Path.join(path, ".git"))
         after
           File.rm_rf!(path)

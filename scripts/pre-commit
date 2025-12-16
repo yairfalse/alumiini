@@ -1,0 +1,52 @@
+#!/bin/bash
+# ALUMIINI Pre-commit Hook
+# Runs verification checks from CLAUDE.md before each commit
+
+set -e
+
+echo "🔍 Running pre-commit checks..."
+
+# 1. Check formatting
+echo "  → Checking format..."
+if ! mix format --check-formatted; then
+    echo "❌ Code not formatted. Run 'mix format' and try again."
+    exit 1
+fi
+
+# 2. Check for banned patterns in lib/
+echo "  → Checking for banned patterns..."
+
+if grep -rn "raise \"" lib/ 2>/dev/null; then
+    echo "❌ Found bare 'raise' in lib/. Use {:error, reason} instead."
+    exit 1
+fi
+
+if grep -rn "IO\.puts\|IO\.inspect" lib/ 2>/dev/null; then
+    echo "❌ Found IO.puts/IO.inspect in lib/. Use Logger instead."
+    exit 1
+fi
+
+if grep -rn "TODO\|FIXME" lib/ 2>/dev/null; then
+    echo "❌ Found TODO/FIXME in lib/. Complete or remove before committing."
+    exit 1
+fi
+
+# 3. Run credo (if available)
+echo "  → Running credo..."
+if mix help credo >/dev/null 2>&1; then
+    if ! mix credo --strict; then
+        echo "❌ Credo checks failed."
+        exit 1
+    fi
+else
+    echo "  ⚠ Credo not installed, skipping..."
+fi
+
+# 4. Run tests
+echo "  → Running tests..."
+if ! mix test; then
+    echo "❌ Tests failed."
+    exit 1
+fi
+
+echo "✅ All pre-commit checks passed!"

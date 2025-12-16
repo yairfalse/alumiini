@@ -61,7 +61,8 @@ defmodule Alumiini.ControllerTest do
       assert config.branch == "develop"
       assert config.path == "manifests/"
       assert config.target_namespace == "production"
-      assert config.interval == 600_000  # 10 minutes
+      # 10 minutes
+      assert config.interval == 600_000
     end
 
     test "uses defaults for optional fields" do
@@ -80,10 +81,13 @@ defmodule Alumiini.ControllerTest do
       assert config.name == "minimal-repo"
       assert config.namespace == "test"
       assert config.url == "https://github.com/example/repo.git"
-      assert config.branch == "main"  # default
+      # default
+      assert config.branch == "main"
       assert config.path == nil
-      assert config.target_namespace == "test"  # defaults to resource namespace
-      assert config.interval == 300_000  # default 5m
+      # defaults to resource namespace
+      assert config.target_namespace == "test"
+      # default 5m
+      assert config.interval == 300_000
     end
   end
 

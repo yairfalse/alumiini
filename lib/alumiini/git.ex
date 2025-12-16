@@ -10,7 +10,8 @@ defmodule Alumiini.Git do
   use GenServer
   require Logger
 
-  @timeout 300_000  # 5 minutes for git operations
+  # 5 minutes for git operations
+  @timeout 300_000
 
   # Client API
 
@@ -53,29 +54,49 @@ defmodule Alumiini.Git do
 
   @impl true
   def init(_opts) do
-    port = open_port()
-    {:ok, %{port: port, caller: nil}}
+    case open_port() do
+      {:ok, port} ->
+        {:ok, %{port: port, caller: nil}}
+
+      {:error, reason} ->
+        {:stop, reason}
+    end
   end
 
   @impl true
   def handle_call({:sync, url, branch, path, depth}, from, state) do
-    request = %{"op" => "sync", "url" => url, "branch" => branch, "path" => path, "depth" => depth}
-    send_request(state.port, request)
-    {:noreply, %{state | caller: from}}
+    request = %{
+      "op" => "sync",
+      "url" => url,
+      "branch" => branch,
+      "path" => path,
+      "depth" => depth
+    }
+
+    case send_request(state.port, request) do
+      :ok -> {:noreply, %{state | caller: from}}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
   end
 
   @impl true
   def handle_call({:files, path, subpath}, from, state) do
     request = %{"op" => "files", "path" => path, "subpath" => subpath}
-    send_request(state.port, request)
-    {:noreply, %{state | caller: from}}
+
+    case send_request(state.port, request) do
+      :ok -> {:noreply, %{state | caller: from}}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
   end
 
   @impl true
   def handle_call({:read, path, file}, from, state) do
     request = %{"op" => "read", "path" => path, "file" => file}
-    send_request(state.port, request)
-    {:noreply, %{state | caller: from}}
+
+    case send_request(state.port, request) do
+      :ok -> {:noreply, %{state | caller: from}}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
   end
 
   @impl true
@@ -95,8 +116,14 @@ defmodule Alumiini.Git do
     end
 
     # Restart the port
-    new_port = open_port()
-    {:noreply, %{state | port: new_port, caller: nil}}
+    case open_port() do
+      {:ok, new_port} ->
+        {:noreply, %{state | port: new_port, caller: nil}}
+
+      {:error, reason} ->
+        Logger.error("Failed to restart git port: #{inspect(reason)}")
+        {:stop, {:port_restart_failed, reason}, state}
+    end
   end
 
   @impl true
@@ -109,16 +136,20 @@ defmodule Alumiini.Git do
   defp open_port do
     binary_path = git_binary_path()
 
-    unless File.exists?(binary_path) do
-      raise "alumiini-git binary not found at #{binary_path}"
-    end
+    if File.exists?(binary_path) do
+      port =
+        Port.open({:spawn_executable, binary_path}, [
+          :binary,
+          {:packet, 4},
+          :exit_status,
+          :use_stdio
+        ])
 
-    Port.open({:spawn_executable, binary_path}, [
-      :binary,
-      {:packet, 4},  # 4-byte big-endian length prefix
-      :exit_status,
-      :use_stdio
-    ])
+      {:ok, port}
+    else
+      Logger.error("alumiini-git binary not found at #{binary_path}")
+      {:error, {:binary_not_found, binary_path}}
+    end
   end
 
   defp git_binary_path do
@@ -133,26 +164,35 @@ defmodule Alumiini.Git do
   end
 
   defp send_request(port, request) do
-    data = Msgpax.pack!(request)
-    Port.command(port, data)
+    case Msgpax.pack(request) do
+      {:ok, data} ->
+        Port.command(port, data)
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Failed to pack msgpack request: #{inspect(reason)}")
+        {:error, {:msgpack_pack_error, reason}}
+    end
   end
 
   defp parse_response(data) do
-    case Msgpax.unpack!(data) do
-      %{"ok" => value} when is_binary(value) ->
-        # Check if this might be base64 from a read operation
-        # We handle decoding in the caller for read operations
+    case Msgpax.unpack(data) do
+      {:ok, %{"ok" => value}} when is_binary(value) ->
         {:ok, value}
 
-      %{"ok" => files} when is_list(files) ->
+      {:ok, %{"ok" => files}} when is_list(files) ->
         {:ok, files}
 
-      %{"err" => reason} ->
+      {:ok, %{"err" => reason}} ->
         {:error, reason}
 
-      other ->
+      {:ok, other} ->
         Logger.error("Unexpected response from git port: #{inspect(other)}")
         {:error, "unexpected response format"}
+
+      {:error, reason} ->
+        Logger.error("Failed to unpack msgpack response: #{inspect(reason)}")
+        {:error, {:msgpack_error, reason}}
     end
   end
 
