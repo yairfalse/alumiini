@@ -2,6 +2,7 @@ import Config
 
 # Development configuration
 config :alumiini,
-  enable_controller: false  # Disable controller in dev by default
+  # Disable controller in dev by default
+  enable_controller: false
 
 config :logger, level: :debug

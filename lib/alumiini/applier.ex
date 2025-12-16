@@ -49,12 +49,17 @@ defmodule Alumiini.Applier do
   @doc """
   Computes a SHA256 hash of a manifest for drift detection.
   """
-  @spec compute_hash(map()) :: String.t()
+  @spec compute_hash(map()) :: {:ok, String.t()} | {:error, term()}
   def compute_hash(manifest) do
-    # Convert to canonical JSON for consistent hashing
-    {:ok, json} = Jason.encode(manifest, pretty: false)
-    hash = :crypto.hash(:sha256, json) |> Base.encode16(case: :lower)
-    "sha256:#{hash}"
+    case Jason.encode(manifest, pretty: false) do
+      {:ok, json} ->
+        hash = :crypto.hash(:sha256, json) |> Base.encode16(case: :lower)
+        {:ok, "sha256:#{hash}"}
+
+      {:error, reason} ->
+        Logger.error("Failed to encode manifest for hashing: #{inspect(reason)}")
+        {:error, {:encode_error, reason}}
+    end
   end
 
   @doc """
@@ -123,8 +128,7 @@ defmodule Alumiini.Applier do
       Logger.debug("Applying resource: #{key}")
 
       # Use server-side apply (K8s 1.18+)
-      operation =
-        K8s.Client.apply(manifest, field_manager: "alumiini", force: true)
+      operation = K8s.Client.apply(manifest, field_manager: "alumiini", force: true)
 
       case K8s.Client.run(conn, operation) do
         {:ok, _result} ->

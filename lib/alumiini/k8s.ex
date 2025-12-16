@@ -59,7 +59,7 @@ defmodule Alumiini.K8s do
           @git_repository_kind,
           [namespace: namespace, name: repo_name],
           status_resource,
-          [subresource: "status"]
+          subresource: "status"
         )
 
       case K8s.Client.run(conn, operation) do
@@ -72,7 +72,10 @@ defmodule Alumiini.K8s do
           {:error, :not_found}
 
         {:error, reason} = error ->
-          Logger.error("Failed to update status for #{namespace}/#{repo_name}: #{inspect(reason)}")
+          Logger.error(
+            "Failed to update status for #{namespace}/#{repo_name}: #{inspect(reason)}"
+          )
+
           error
       end
     end
@@ -213,8 +216,7 @@ defmodule Alumiini.K8s do
           {:ok, map()} | {:error, term()}
   def get_resource(api_version, kind, name, namespace) do
     with {:ok, conn} <- conn() do
-      operation =
-        K8s.Client.get(api_version, kind, namespace: namespace, name: name)
+      operation = K8s.Client.get(api_version, kind, namespace: namespace, name: name)
 
       K8s.Client.run(conn, operation)
     end
@@ -227,8 +229,7 @@ defmodule Alumiini.K8s do
           :ok | {:error, term()}
   def delete_resource(api_version, kind, name, namespace) do
     with {:ok, conn} <- conn() do
-      operation =
-        K8s.Client.delete(api_version, kind, namespace: namespace, name: name)
+      operation = K8s.Client.delete(api_version, kind, namespace: namespace, name: name)
 
       case K8s.Client.run(conn, operation) do
         {:ok, _} -> :ok

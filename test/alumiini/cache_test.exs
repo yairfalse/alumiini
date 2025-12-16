@@ -76,6 +76,7 @@ defmodule Alumiini.CacheTest do
   describe "sync state cache" do
     test "stores and retrieves sync state" do
       repo_name = "test-repo-#{:rand.uniform(1000)}"
+
       state = %{
         last_sync: DateTime.utc_now(),
         status: :synced,

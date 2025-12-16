@@ -99,8 +99,8 @@ defmodule Alumiini.ApplierTest do
         "data" => %{"key" => "value"}
       }
 
-      hash1 = Applier.compute_hash(manifest)
-      hash2 = Applier.compute_hash(manifest)
+      {:ok, hash1} = Applier.compute_hash(manifest)
+      {:ok, hash2} = Applier.compute_hash(manifest)
 
       assert hash1 == hash2
       assert String.starts_with?(hash1, "sha256:")
@@ -110,7 +110,10 @@ defmodule Alumiini.ApplierTest do
       manifest1 = %{"kind" => "ConfigMap", "data" => %{"key" => "value1"}}
       manifest2 = %{"kind" => "ConfigMap", "data" => %{"key" => "value2"}}
 
-      assert Applier.compute_hash(manifest1) != Applier.compute_hash(manifest2)
+      {:ok, hash1} = Applier.compute_hash(manifest1)
+      {:ok, hash2} = Applier.compute_hash(manifest2)
+
+      assert hash1 != hash2
     end
   end
 
