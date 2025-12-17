@@ -1,7 +1,7 @@
-defmodule Alumiini.GitTest do
+defmodule Nopea.GitTest do
   use ExUnit.Case, async: false
 
-  alias Alumiini.Git
+  alias Nopea.Git
 
   describe "decode_content/1" do
     test "decodes valid base64 content" do
@@ -41,7 +41,7 @@ defmodule Alumiini.GitTest do
         IO.puts("Skipping: Rust binary not built")
         :ok
       else
-        path = "/tmp/alumiini-test-#{:rand.uniform(100_000)}"
+        path = "/tmp/nopea-test-#{:rand.uniform(100_000)}"
 
         try do
           result =
@@ -70,7 +70,7 @@ defmodule Alumiini.GitTest do
         IO.puts("Skipping: Rust binary not built")
         :ok
       else
-        path = "/tmp/alumiini-test-files-#{:rand.uniform(100_000)}"
+        path = "/tmp/nopea-test-files-#{:rand.uniform(100_000)}"
 
         try do
           File.mkdir_p!(path)
@@ -100,7 +100,7 @@ defmodule Alumiini.GitTest do
         IO.puts("Skipping: Rust binary not built")
         :ok
       else
-        path = "/tmp/alumiini-test-read-#{:rand.uniform(100_000)}"
+        path = "/tmp/nopea-test-read-#{:rand.uniform(100_000)}"
 
         try do
           content = "apiVersion: v1\nkind: ConfigMap"
@@ -119,7 +119,7 @@ defmodule Alumiini.GitTest do
   end
 
   defp rust_binary_exists? do
-    dev_path = Path.join([File.cwd!(), "alumiini-git", "target", "release", "alumiini-git"])
+    dev_path = Path.join([File.cwd!(), "nopea-git", "target", "release", "nopea-git"])
     File.exists?(dev_path)
   end
 end

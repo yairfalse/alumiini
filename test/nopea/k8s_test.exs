@@ -1,7 +1,7 @@
-defmodule Alumiini.K8sTest do
+defmodule Nopea.K8sTest do
   use ExUnit.Case, async: true
 
-  alias Alumiini.K8s
+  alias Nopea.K8s
 
   describe "build_status/4" do
     test "builds status with all fields" do

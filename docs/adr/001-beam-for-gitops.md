@@ -64,7 +64,7 @@ Other runtimes share memory between "tasks". A panic or memory corruption affect
 ### 2. Supervision Trees
 
 ```elixir
-defmodule Alumiini.Supervisor do
+defmodule Nopea.Supervisor do
   use DynamicSupervisor
 
   # Automatic restart on failure
@@ -86,7 +86,7 @@ No Redis. No external dependencies. Cache survives process crashes (if stored in
 
 ### 4. No External Dependencies
 
-| Feature | Other GitOps | ALUMIINI |
+| Feature | Other GitOps | NOPEA |
 |---------|-------------|----------|
 | Caching | Redis | ETS |
 | Queues | External queue | GenServer mailbox |
@@ -116,10 +116,10 @@ No Redis. No external dependencies. Cache survives process crashes (if stored in
 
 ```elixir
 # When GitRepository created
-DynamicSupervisor.start_child(Alumiini.Supervisor, {Worker, git_repo})
+DynamicSupervisor.start_child(Nopea.Supervisor, {Worker, git_repo})
 
 # When GitRepository deleted
-DynamicSupervisor.terminate_child(Alumiini.Supervisor, pid)
+DynamicSupervisor.terminate_child(Nopea.Supervisor, pid)
 ```
 
 ### Message-Based Sync Triggers

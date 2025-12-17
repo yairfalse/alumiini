@@ -1,5 +1,5 @@
 #!/bin/bash
-# ALUMIINI Pre-commit Hook
+# NOPEA Pre-commit Hook
 # Runs verification checks from CLAUDE.md before each commit
 
 set -e

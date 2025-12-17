@@ -6,11 +6,11 @@ RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconfig
 WORKDIR /build
 
 # Copy Rust project
-COPY alumiini-git/Cargo.toml alumiini-git/Cargo.lock* ./alumiini-git/
-COPY alumiini-git/src ./alumiini-git/src
+COPY nopea-git/Cargo.toml nopea-git/Cargo.lock* ./nopea-git/
+COPY nopea-git/src ./nopea-git/src
 
 # Build Rust binary
-WORKDIR /build/alumiini-git
+WORKDIR /build/nopea-git
 RUN cargo build --release
 
 # Stage 2: Build Elixir release
@@ -34,7 +34,7 @@ RUN mix deps.get --only prod
 RUN mix deps.compile
 
 # Copy Rust binary from rust-builder
-COPY --from=rust-builder /build/alumiini-git/target/release/alumiini-git ./priv/
+COPY --from=rust-builder /build/nopea-git/target/release/nopea-git ./priv/
 
 # Copy source code
 COPY lib ./lib
@@ -58,20 +58,20 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 # Copy Elixir release
-COPY --from=elixir-builder /build/_build/prod/rel/alumiini ./
+COPY --from=elixir-builder /build/_build/prod/rel/nopea ./
 
 # Copy Rust binary to priv directory
-COPY --from=rust-builder /build/alumiini-git/target/release/alumiini-git ./lib/alumiini-*/priv/
+COPY --from=rust-builder /build/nopea-git/target/release/nopea-git ./lib/nopea-*/priv/
 
 # Create repos directory
-RUN mkdir -p /tmp/alumiini/repos
+RUN mkdir -p /tmp/nopea/repos
 
 # Set environment
 ENV HOME=/app
-ENV RELEASE_COOKIE=alumiini_cookie
+ENV RELEASE_COOKIE=nopea_cookie
 
 # Expose port
 EXPOSE 4000
 
 # Run the application
-CMD ["bin/alumiini", "start"]
+CMD ["bin/nopea", "start"]

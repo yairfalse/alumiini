@@ -1,6 +1,6 @@
-defmodule Alumiini.Cache do
+defmodule Nopea.Cache do
   @moduledoc """
-  ETS-based caching for ALUMIINI.
+  ETS-based caching for NOPEA.
 
   Provides in-memory storage for:
   - Commit hashes per repository
@@ -14,9 +14,9 @@ defmodule Alumiini.Cache do
   use GenServer
   require Logger
 
-  @commits_table :alumiini_commits
-  @resources_table :alumiini_resources
-  @sync_states_table :alumiini_sync_states
+  @commits_table :nopea_commits
+  @resources_table :nopea_resources
+  @sync_states_table :nopea_sync_states
 
   # Client API
 

@@ -1,4 +1,4 @@
-//! Protocol definitions for alumiini-git
+//! Protocol definitions for nopea-git
 
 use serde::{Deserialize, Serialize, ser::SerializeMap};
 

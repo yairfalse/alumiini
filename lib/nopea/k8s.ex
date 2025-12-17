@@ -1,4 +1,4 @@
-defmodule Alumiini.K8s do
+defmodule Nopea.K8s do
   @moduledoc """
   Kubernetes API client wrapper.
 
@@ -10,7 +10,7 @@ defmodule Alumiini.K8s do
 
   require Logger
 
-  @git_repository_api_version "alumiini.io/v1alpha1"
+  @git_repository_api_version "nopea.io/v1alpha1"
   @git_repository_kind "GitRepository"
 
   @doc """
@@ -19,7 +19,7 @@ defmodule Alumiini.K8s do
   """
   @spec conn() :: {:ok, K8s.Conn.t()} | {:error, term()}
   def conn do
-    case Application.get_env(:alumiini, :k8s_conn) do
+    case Application.get_env(:nopea, :k8s_conn) do
       nil ->
         # Try in-cluster first, fall back to kubeconfig
         case K8s.Conn.from_service_account() do
@@ -195,7 +195,7 @@ defmodule Alumiini.K8s do
   @spec apply_manifest(map(), String.t() | nil) :: :ok | {:error, term()}
   def apply_manifest(manifest, target_namespace \\ nil) do
     with {:ok, conn} <- conn() do
-      Alumiini.Applier.apply_single(manifest, conn, target_namespace)
+      Nopea.Applier.apply_single(manifest, conn, target_namespace)
     end
   end
 
@@ -205,7 +205,7 @@ defmodule Alumiini.K8s do
   @spec apply_manifests([map()], String.t() | nil) :: {:ok, non_neg_integer()} | {:error, term()}
   def apply_manifests(manifests, target_namespace \\ nil) do
     with {:ok, conn} <- conn() do
-      Alumiini.Applier.apply_manifests(manifests, conn, target_namespace)
+      Nopea.Applier.apply_manifests(manifests, conn, target_namespace)
     end
   end
 

@@ -1,7 +1,7 @@
 import Config
 
 # Development configuration
-config :alumiini,
+config :nopea,
   # Disable controller in dev by default
   enable_controller: false
 

@@ -1,4 +1,4 @@
-defmodule Alumiini.Applier do
+defmodule Nopea.Applier do
   @moduledoc """
   Handles parsing and applying K8s manifests.
 
@@ -128,7 +128,7 @@ defmodule Alumiini.Applier do
       Logger.debug("Applying resource: #{key}")
 
       # Use server-side apply (K8s 1.18+)
-      operation = K8s.Client.apply(manifest, field_manager: "alumiini", force: true)
+      operation = K8s.Client.apply(manifest, field_manager: "nopea", force: true)
 
       case K8s.Client.run(conn, operation) do
         {:ok, _result} ->

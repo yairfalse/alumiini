@@ -1,4 +1,4 @@
-defmodule Alumiini.Controller do
+defmodule Nopea.Controller do
   @moduledoc """
   Controller for watching GitRepository CRDs and managing Workers.
 
@@ -11,7 +11,7 @@ defmodule Alumiini.Controller do
   use GenServer
   require Logger
 
-  alias Alumiini.{K8s, Supervisor}
+  alias Nopea.{K8s, Supervisor}
 
   @default_namespace "default"
   @reconnect_delay 5_000

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install git hooks for ALUMIINI development
+# Install git hooks for NOPEA development
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"

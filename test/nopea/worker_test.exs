@@ -1,7 +1,7 @@
-defmodule Alumiini.WorkerTest do
+defmodule Nopea.WorkerTest do
   use ExUnit.Case, async: false
 
-  alias Alumiini.Worker
+  alias Nopea.Worker
 
   # These tests require Git GenServer (Rust binary)
   @moduletag :integration

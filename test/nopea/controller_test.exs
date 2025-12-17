@@ -1,4 +1,4 @@
-defmodule Alumiini.ControllerTest do
+defmodule Nopea.ControllerTest do
   use ExUnit.Case, async: true
 
   # Controller tests are mostly integration tests since they

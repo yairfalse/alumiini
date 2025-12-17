@@ -7,7 +7,7 @@
 
 ## Context
 
-ALUMIINI needs to emit events for:
+NOPEA needs to emit events for:
 1. Logging and debugging
 2. Integration with KULTA (progressive delivery)
 3. Integration with SYKLI (CI/CD)
@@ -26,7 +26,7 @@ What event format should we use?
 │                    EVENT FLOW                                     │
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│   ALUMIINI                                                       │
+│   NOPEA                                                       │
 │   └── Sync triggers                                              │
 │       └── Emit CDEvents                                          │
 │           ├── Logger (human-readable)                            │
@@ -53,7 +53,7 @@ What event format should we use?
 
 ### Core Events
 
-| ALUMIINI Action | CDEvent Type |
+| NOPEA Action | CDEvent Type |
 |-----------------|--------------|
 | Sync started | `dev.cdevents.deployment.started` |
 | Sync succeeded | `dev.cdevents.deployment.finished` |
@@ -62,12 +62,12 @@ What event format should we use?
 
 ### Custom Extensions
 
-| ALUMIINI Action | Event Type |
+| NOPEA Action | Event Type |
 |-----------------|------------|
-| Drift detected | `dev.alumiini.drift.detected` |
-| Drift corrected | `dev.alumiini.drift.corrected` |
-| Worker started | `dev.alumiini.worker.started` |
-| Worker stopped | `dev.alumiini.worker.stopped` |
+| Drift detected | `dev.nopea.drift.detected` |
+| Drift corrected | `dev.nopea.drift.corrected` |
+| Worker started | `dev.nopea.worker.started` |
+| Worker stopped | `dev.nopea.worker.stopped` |
 
 ---
 
@@ -79,7 +79,7 @@ What event format should we use?
 {
   "specversion": "1.0",
   "type": "dev.cdevents.deployment.started",
-  "source": "alumiini/default/my-app",
+  "source": "nopea/default/my-app",
   "id": "dep-001",
   "time": "2024-12-16T10:30:00Z",
   "data": {
@@ -107,7 +107,7 @@ What event format should we use?
 {
   "specversion": "1.0",
   "type": "dev.cdevents.deployment.finished",
-  "source": "alumiini/default/my-app",
+  "source": "nopea/default/my-app",
   "id": "dep-002",
   "time": "2024-12-16T10:30:05Z",
   "data": {
@@ -132,7 +132,7 @@ What event format should we use?
 ## Implementation
 
 ```elixir
-defmodule Alumiini.Events do
+defmodule Nopea.Events do
   @moduledoc "CDEvents emission"
 
   def deployment_started(repo, commit, trigger) do
@@ -180,7 +180,7 @@ defmodule Alumiini.Events do
   end
 
   defp source(repo) do
-    "alumiini/#{repo.namespace}/#{repo.name}"
+    "nopea/#{repo.namespace}/#{repo.name}"
   end
 end
 ```
@@ -189,16 +189,16 @@ end
 
 ## Integration with KULTA
 
-When `rolloutRef` is set, ALUMIINI sends deployment events to KULTA:
+When `rolloutRef` is set, NOPEA sends deployment events to KULTA:
 
 ```
-ALUMIINI ──deployment.started──► KULTA
+NOPEA ──deployment.started──► KULTA
 KULTA ──starts canary──► K8s
 KULTA ──deployment.progressed──► (observability)
-KULTA ──deployment.finished──► ALUMIINI
+KULTA ──deployment.finished──► NOPEA
 ```
 
-KULTA subscribes to ALUMIINI's `deployment.started` to trigger progressive rollouts.
+KULTA subscribes to NOPEA's `deployment.started` to trigger progressive rollouts.
 
 ---
 
@@ -208,8 +208,8 @@ CI/CD pipeline flow:
 
 ```
 SYKLI ──pipelinerun.finished──► (git push)
-Git ──webhook──► ALUMIINI
-ALUMIINI ──deployment.started──► (observability)
+Git ──webhook──► NOPEA
+NOPEA ──deployment.started──► (observability)
 ```
 
 Full traceability from code commit to production deployment.
@@ -220,7 +220,7 @@ Full traceability from code commit to production deployment.
 
 ### Positive
 - Standard format, interoperable
-- Full observability chain (SYKLI → ALUMIINI → KULTA)
+- Full observability chain (SYKLI → NOPEA → KULTA)
 - Easy integration with external systems
 
 ### Negative

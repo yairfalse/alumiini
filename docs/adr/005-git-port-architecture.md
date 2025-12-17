@@ -7,7 +7,7 @@
 
 ## Context
 
-ALUMIINI needs to perform Git operations (clone, fetch, read files). Options:
+NOPEA needs to perform Git operations (clone, fetch, read files). Options:
 
 1. **Shell out to git CLI** - Simple but slow, credential handling messy
 2. **Elixir NIF with libgit2** - Fast but NIF crash = BEAM crash
@@ -21,19 +21,19 @@ ALUMIINI needs to perform Git operations (clone, fetch, read files). Options:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    ALUMIINI (BEAM)                           │
+│                    NOPEA (BEAM)                           │
 │                                                             │
 │   Worker GenServer                                          │
 │        │                                                    │
 │        │ GenServer.call                                     │
 │        ▼                                                    │
-│   Alumiini.Git (GenServer)                                  │
+│   Nopea.Git (GenServer)                                  │
 │        │                                                    │
 │        │ Port (stdin/stdout)                                │
 │        │ Length-prefixed msgpack                            │
 │        ▼                                                    │
 ├─────────────────────────────────────────────────────────────┤
-│   alumiini-git (Rust process)                               │
+│   nopea-git (Rust process)                               │
 │   - git2-rs for operations                                  │
 │   - Loops reading requests                                  │
 │   - Returns results or errors                               │
@@ -148,7 +148,7 @@ Response:
 ### Rust Binary
 
 ```rust
-// alumiini-git/src/main.rs
+// nopea-git/src/main.rs
 fn main() {
     loop {
         let request = read_request();  // Length-prefixed msgpack from stdin
@@ -161,7 +161,7 @@ fn main() {
 ### Elixir Port Wrapper
 
 ```elixir
-defmodule Alumiini.Git do
+defmodule Nopea.Git do
   use GenServer
 
   def start_link(_) do

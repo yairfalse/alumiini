@@ -1,4 +1,4 @@
-defmodule Alumiini.Supervisor do
+defmodule Nopea.Supervisor do
   @moduledoc """
   DynamicSupervisor for managing Worker processes.
 
@@ -9,7 +9,7 @@ defmodule Alumiini.Supervisor do
   use DynamicSupervisor
   require Logger
 
-  alias Alumiini.Worker
+  alias Nopea.Worker
 
   def start_link(opts \\ []) do
     DynamicSupervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -64,7 +64,7 @@ defmodule Alumiini.Supervisor do
   """
   @spec list_workers() :: [{String.t(), pid()}]
   def list_workers do
-    Registry.select(Alumiini.Registry, [{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
+    Registry.select(Nopea.Registry, [{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
   end
 
   @doc """

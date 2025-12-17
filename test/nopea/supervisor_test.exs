@@ -1,7 +1,7 @@
-defmodule Alumiini.SupervisorTest do
+defmodule Nopea.SupervisorTest do
   use ExUnit.Case, async: false
 
-  alias Alumiini.Supervisor, as: AlumSupervisor
+  alias Nopea.Supervisor, as: AlumSupervisor
 
   # Application is started by test_helper.exs
 

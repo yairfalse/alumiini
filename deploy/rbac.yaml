@@ -1,17 +1,17 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: alumiini-controller
-  namespace: alumiini-system
+  name: nopea-controller
+  namespace: nopea-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: alumiini-controller
+  name: nopea-controller
 rules:
   # GitRepository CRD access
   - apiGroups:
-      - alumiini.io
+      - nopea.io
     resources:
       - gitrepositories
     verbs:
@@ -19,7 +19,7 @@ rules:
       - list
       - watch
   - apiGroups:
-      - alumiini.io
+      - nopea.io
     resources:
       - gitrepositories/status
     verbs:
@@ -116,12 +116,12 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: alumiini-controller
+  name: nopea-controller
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: alumiini-controller
+  name: nopea-controller
 subjects:
   - kind: ServiceAccount
-    name: alumiini-controller
-    namespace: alumiini-system
+    name: nopea-controller
+    namespace: nopea-system

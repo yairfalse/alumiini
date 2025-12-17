@@ -1,6 +1,6 @@
-defmodule Alumiini do
+defmodule Nopea do
   @moduledoc """
-  Documentation for `Alumiini`.
+  Documentation for `Nopea`.
   """
 
   @doc """
@@ -8,7 +8,7 @@ defmodule Alumiini do
 
   ## Examples
 
-      iex> Alumiini.hello()
+      iex> Nopea.hello()
       :world
 
   """

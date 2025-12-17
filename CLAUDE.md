@@ -1,6 +1,6 @@
-# ALUMIINI: Lightweight GitOps Controller
+# NOPEA: Lightweight GitOps Controller
 
-**ALUMIINI = Aluminum (Finnish) — GitOps without the weight**
+**NOPEA = Aluminum (Finnish) — GitOps without the weight**
 
 ---
 
@@ -33,7 +33,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    ALUMIINI                                      │
+│                    NOPEA                                      │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │   OTP Application                                               │
@@ -93,7 +93,7 @@ Logger.info("Syncing repository", repo: name)
 %{phase: "syncing"}
 
 # REQUIRED
-defmodule Alumiini.Phase do
+defmodule Nopea.Phase do
   @type t :: :pending | :syncing | :synced | :failed
 end
 
@@ -128,7 +128,7 @@ end
 ### GenServer State
 
 ```elixir
-defmodule Alumiini.Worker do
+defmodule Nopea.Worker do
   use GenServer
 
   defstruct [
@@ -154,7 +154,7 @@ end
 ### Supervisor Child Spec
 
 ```elixir
-defmodule Alumiini.Supervisor do
+defmodule Nopea.Supervisor do
   use DynamicSupervisor
 
   def start_link(opts) do
@@ -167,12 +167,12 @@ defmodule Alumiini.Supervisor do
   end
 
   def start_worker(git_repository) do
-    spec = {Alumiini.Worker, git_repository}
+    spec = {Nopea.Worker, git_repository}
     DynamicSupervisor.start_child(__MODULE__, spec)
   end
 
   def stop_worker(repo_name) do
-    case Registry.lookup(Alumiini.Registry, repo_name) do
+    case Registry.lookup(Nopea.Registry, repo_name) do
       [{pid, _}] -> DynamicSupervisor.terminate_child(__MODULE__, pid)
       [] -> {:error, :not_found}
     end
@@ -183,7 +183,7 @@ end
 ### ETS Table Creation
 
 ```elixir
-defmodule Alumiini.Cache do
+defmodule Nopea.Cache do
   use GenServer
 
   def start_link(opts) do
@@ -222,16 +222,16 @@ end
 
 ```elixir
 # Step 1: Write test that FAILS (RED)
-defmodule Alumiini.WorkerTest do
+defmodule Nopea.WorkerTest do
   use ExUnit.Case, async: true
 
   test "sync_now triggers git fetch and apply" do
     # Arrange
     repo = %{name: "test-repo", url: "https://github.com/org/repo.git"}
-    {:ok, pid} = Alumiini.Worker.start_link(repo)
+    {:ok, pid} = Nopea.Worker.start_link(repo)
 
     # Act
-    result = Alumiini.Worker.sync_now(pid)
+    result = Nopea.Worker.sync_now(pid)
 
     # Assert
     assert {:ok, %{commit: _commit}} = result
@@ -247,7 +247,7 @@ end
 
 ```elixir
 # Step 3: Write MINIMAL code to pass test
-defmodule Alumiini.Worker do
+defmodule Nopea.Worker do
   use GenServer
 
   def start_link(repo) do
@@ -321,7 +321,7 @@ end
 
 ```elixir
 # Worker crashes are OK - supervisor restarts
-defmodule Alumiini.Worker do
+defmodule Nopea.Worker do
   use GenServer, restart: :permanent
 
   @impl true
@@ -449,7 +449,7 @@ end
 ### Module Docs
 
 ```elixir
-defmodule Alumiini.Worker do
+defmodule Nopea.Worker do
   @moduledoc """
   GenServer that manages a single GitRepository.
 
@@ -485,10 +485,10 @@ Returns `{:ok, %{commit: sha}}` on success or `{:error, reason}` on failure.
 
 ## Examples
 
-    iex> Alumiini.Worker.sync_now(pid)
+    iex> Nopea.Worker.sync_now(pid)
     {:ok, %{commit: "abc123"}}
 
-    iex> Alumiini.Worker.sync_now(pid)
+    iex> Nopea.Worker.sync_now(pid)
     {:error, {:git_error, "network timeout"}}
 """
 @spec sync_now(pid()) :: {:ok, map()} | {:error, term()}
@@ -524,7 +524,7 @@ end
 ### Use ExUnit Tags
 
 ```elixir
-defmodule Alumiini.WorkerTest do
+defmodule Nopea.WorkerTest do
   use ExUnit.Case, async: true
 
   @moduletag :worker
@@ -545,19 +545,19 @@ end
 
 ```elixir
 # Use Mox for mocking
-defmodule Alumiini.GitBehaviour do
+defmodule Nopea.GitBehaviour do
   @callback fetch(String.t()) :: {:ok, map()} | {:error, term()}
   @callback clone(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
 end
 
 # In test
-defmodule Alumiini.WorkerTest do
+defmodule Nopea.WorkerTest do
   import Mox
 
   setup :verify_on_exit!
 
   test "handles git error gracefully" do
-    Alumiini.GitMock
+    Nopea.GitMock
     |> expect(:fetch, fn _url -> {:error, :network_timeout} end)
 
     {:ok, pid} = Worker.start_link(%{url: "..."})

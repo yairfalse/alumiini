@@ -1,7 +1,7 @@
-defmodule Alumiini.ApplierTest do
+defmodule Nopea.ApplierTest do
   use ExUnit.Case, async: true
 
-  alias Alumiini.Applier
+  alias Nopea.Applier
 
   describe "parse_manifests/1" do
     test "parses single YAML document" do

@@ -1,7 +1,7 @@
-defmodule Alumiini.CacheTest do
+defmodule Nopea.CacheTest do
   use ExUnit.Case, async: false
 
-  alias Alumiini.Cache
+  alias Nopea.Cache
 
   # Application is started by test_helper.exs
 

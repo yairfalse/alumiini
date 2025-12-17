@@ -1,4 +1,4 @@
-//! alumiini-git: Git operations port for ALUMIINI
+//! nopea-git: Git operations port for NOPEA
 //!
 //! Communicates via length-prefixed msgpack over stdin/stdout.
 //! Protocol: 4-byte big-endian length + msgpack payload

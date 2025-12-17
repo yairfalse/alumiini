@@ -6,11 +6,11 @@
 /tmp/
 erl_crash.dump
 *.ez
-alumiini-*.tar
+nopea-*.tar
 
 # Rust
-alumiini-git/target/
-alumiini-git/Cargo.lock
+nopea-git/target/
+nopea-git/Cargo.lock
 
 # IDE
 .idea/

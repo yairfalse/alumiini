@@ -1,8 +1,8 @@
-defmodule Alumiini.Git do
+defmodule Nopea.Git do
   @moduledoc """
   Git operations via Rust Port.
 
-  Communicates with alumiini-git binary using length-prefixed msgpack protocol.
+  Communicates with nopea-git binary using length-prefixed msgpack protocol.
   Provides crash isolation - if the Rust process crashes, we restart it
   without affecting other BEAM processes.
   """
@@ -147,19 +147,19 @@ defmodule Alumiini.Git do
 
       {:ok, port}
     else
-      Logger.error("alumiini-git binary not found at #{binary_path}")
+      Logger.error("nopea-git binary not found at #{binary_path}")
       {:error, {:binary_not_found, binary_path}}
     end
   end
 
   defp git_binary_path do
     # Check for dev path first, then priv
-    dev_path = Path.join([File.cwd!(), "alumiini-git", "target", "release", "alumiini-git"])
+    dev_path = Path.join([File.cwd!(), "nopea-git", "target", "release", "nopea-git"])
 
     if File.exists?(dev_path) do
       dev_path
     else
-      Application.app_dir(:alumiini, "priv/alumiini-git")
+      Application.app_dir(:nopea, "priv/nopea-git")
     end
   end
 

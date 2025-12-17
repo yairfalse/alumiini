@@ -1,9 +1,9 @@
 .PHONY: all build rust elixir test docker deploy clean
 
 # Variables
-IMAGE_NAME ?= alumiini
+IMAGE_NAME ?= nopea
 IMAGE_TAG ?= latest
-NAMESPACE ?= alumiini-system
+NAMESPACE ?= nopea-system
 
 all: build
 
@@ -13,8 +13,8 @@ build: rust elixir
 # Build Rust binary
 rust:
 	@echo "Building Rust binary..."
-	cd alumiini-git && cargo build --release
-	@echo "Rust binary built: alumiini-git/target/release/alumiini-git"
+	cd nopea-git && cargo build --release
+	@echo "Rust binary built: nopea-git/target/release/nopea-git"
 
 # Build Elixir
 elixir:
@@ -26,7 +26,7 @@ elixir:
 # Run Rust tests
 test-rust:
 	@echo "Running Rust tests..."
-	cd alumiini-git && cargo test
+	cd nopea-git && cargo test
 
 # Run Elixir tests
 test-elixir:
@@ -77,47 +77,47 @@ undeploy:
 
 # Run locally (development)
 run:
-	@echo "Starting ALUMIINI locally..."
+	@echo "Starting NOPEA locally..."
 	iex -S mix
 
 # Run with controller disabled (for testing)
 run-no-controller:
-	@echo "Starting ALUMIINI without controller..."
-	ALUMIINI_ENABLE_CONTROLLER=false iex -S mix
+	@echo "Starting NOPEA without controller..."
+	NOPEA_ENABLE_CONTROLLER=false iex -S mix
 
 # Format code
 fmt:
-	cd alumiini-git && cargo fmt
+	cd nopea-git && cargo fmt
 	mix format
 
 # Lint
 lint:
-	cd alumiini-git && cargo clippy -- -D warnings
+	cd nopea-git && cargo clippy -- -D warnings
 	mix credo --strict || true
 
 # Clean build artifacts
 clean:
 	@echo "Cleaning..."
-	cd alumiini-git && cargo clean
+	cd nopea-git && cargo clean
 	rm -rf _build deps
 	@echo "Cleaned"
 
 # Create kind cluster
 kind-create:
 	@echo "Creating kind cluster..."
-	kind create cluster --name alumiini
+	kind create cluster --name nopea
 
 # Delete kind cluster
 kind-delete:
 	@echo "Deleting kind cluster..."
-	kind delete cluster --name alumiini
+	kind delete cluster --name nopea
 
 # Full development setup
 dev-setup: kind-create kind-load deploy
 
 # Show logs
 logs:
-	kubectl logs -n $(NAMESPACE) -l app=alumiini-controller -f
+	kubectl logs -n $(NAMESPACE) -l app=nopea-controller -f
 
 # Get status
 status:
@@ -129,7 +129,7 @@ status:
 
 # Help
 help:
-	@echo "ALUMIINI Makefile"
+	@echo "NOPEA Makefile"
 	@echo ""
 	@echo "Targets:"
 	@echo "  build          - Build Rust and Elixir"

@@ -1,14 +1,14 @@
-defmodule Alumiini.MixProject do
+defmodule Nopea.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :alumiini,
+      app: :nopea,
       version: "0.1.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      description: "GitOps controller for Kubernetes - part of the Finnish Stack",
+      description: "Fast GitOps controller for Kubernetes",
       package: package()
     ]
   end
@@ -16,7 +16,7 @@ defmodule Alumiini.MixProject do
   def application do
     [
       extra_applications: [:logger],
-      mod: {Alumiini.Application, []}
+      mod: {Nopea.Application, []}
     ]
   end
 
@@ -50,9 +50,9 @@ defmodule Alumiini.MixProject do
 
   defp package do
     [
-      name: "alumiini",
+      name: "nopea",
       licenses: ["Apache-2.0"],
-      links: %{"GitHub" => "https://github.com/false-systems/alumiini"}
+      links: %{"GitHub" => "https://github.com/yairfalse/nopea"}
     ]
   end
 end

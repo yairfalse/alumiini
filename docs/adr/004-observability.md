@@ -7,7 +7,7 @@
 
 ## Context
 
-ALUMIINI needs observability that:
+NOPEA needs observability that:
 1. Integrates with TAPIO/AHTI ecosystem
 2. Uses same event schema patterns
 3. Exports to Prometheus/Grafana
@@ -24,13 +24,13 @@ ALUMIINI needs observability that:
 │                    OBSERVABILITY STACK                           │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│   ALUMIINI Events                                               │
+│   NOPEA Events                                               │
 │   └── AluminiEvent (follows TapioEvent pattern)                 │
 │       └── CDEvents for external systems                         │
 │       └── OTEL metrics for internal ops                         │
 │                                                                 │
 │   Prometheus Metrics                                            │
-│   └── alumiini_* prefix                                         │
+│   └── nopea_* prefix                                         │
 │   └── OTEL attribute standards (k8s.*, etc.)                   │
 │                                                                 │
 │   Telemetry Pipeline                                            │
@@ -48,7 +48,7 @@ ALUMIINI needs observability that:
 Following TAPIO's TapioEvent pattern:
 
 ```elixir
-defmodule Alumiini.Event do
+defmodule Nopea.Event do
   @moduledoc """
   AluminiEvent - follows TapioEvent schema from TAPIO.
   """
@@ -145,14 +145,14 @@ Following TAPIO's OTEL_ATTRIBUTE_STANDARDS.md:
 
 ```elixir
 # Service identification
-service.name: "alumiini"
+service.name: "nopea"
 service.version: "1.0.0"
-service.instance.id: "alumiini-abc123"
+service.instance.id: "nopea-abc123"
 
 # Kubernetes context
 k8s.cluster.name: "prod-us-east"
-k8s.namespace.name: "alumiini-system"
-k8s.pod.name: "alumiini-controller-xyz"
+k8s.namespace.name: "nopea-system"
+k8s.pod.name: "nopea-controller-xyz"
 k8s.node.name: "node-1"
 ```
 
@@ -160,16 +160,16 @@ k8s.node.name: "node-1"
 
 ```elixir
 # GitOps context
-alumiini.repo.name: "my-app"
-alumiini.repo.url: "https://github.com/org/my-app.git"
-alumiini.repo.branch: "main"
-alumiini.repo.commit: "abc123"
-alumiini.repo.path: "deploy/"
+nopea.repo.name: "my-app"
+nopea.repo.url: "https://github.com/org/my-app.git"
+nopea.repo.branch: "main"
+nopea.repo.commit: "abc123"
+nopea.repo.path: "deploy/"
 
 # Sync context
-alumiini.sync.trigger: "webhook"      # webhook, poll, reconcile, startup
-alumiini.sync.duration_ms: 1500
-alumiini.sync.resources_applied: 5
+nopea.sync.trigger: "webhook"      # webhook, poll, reconcile, startup
+nopea.sync.duration_ms: 1500
+nopea.sync.resources_applied: 5
 
 # Error context
 error.type: "git_error"
@@ -185,9 +185,9 @@ Following AHTI's metrics patterns:
 ### Core Metrics
 
 ```elixir
-defmodule Alumiini.Metrics do
+defmodule Nopea.Metrics do
   @moduledoc """
-  Prometheus metrics for ALUMIINI.
+  Prometheus metrics for NOPEA.
   """
 
   use PromEx.Plugin
@@ -197,16 +197,16 @@ defmodule Alumiini.Metrics do
     [
       # Counter: syncs by outcome
       counter(
-        [:alumiini, :syncs, :total],
-        event: [:alumiini, :sync, :stop],
+        [:nopea, :syncs, :total],
+        event: [:nopea, :sync, :stop],
         tags: [:repo_name, :trigger, :outcome],
         description: "Total syncs by repo, trigger, and outcome"
       ),
 
       # Histogram: sync duration
       distribution(
-        [:alumiini, :sync, :duration, :milliseconds],
-        event: [:alumiini, :sync, :stop],
+        [:nopea, :sync, :duration, :milliseconds],
+        event: [:nopea, :sync, :stop],
         measurement: :duration,
         unit: {:native, :millisecond},
         tags: [:repo_name, :trigger],
@@ -215,8 +215,8 @@ defmodule Alumiini.Metrics do
 
       # Counter: resources applied
       counter(
-        [:alumiini, :resources, :applied, :total],
-        event: [:alumiini, :apply, :stop],
+        [:nopea, :resources, :applied, :total],
+        event: [:nopea, :apply, :stop],
         tags: [:repo_name, :resource_kind],
         description: "Total resources applied by kind"
       )
@@ -228,16 +228,16 @@ defmodule Alumiini.Metrics do
     [
       # Counter: git operations
       counter(
-        [:alumiini, :git, :operations, :total],
-        event: [:alumiini, :git, :stop],
+        [:nopea, :git, :operations, :total],
+        event: [:nopea, :git, :stop],
         tags: [:repo_name, :operation, :outcome],
         description: "Git operations (clone, fetch) by outcome"
       ),
 
       # Histogram: git operation duration
       distribution(
-        [:alumiini, :git, :duration, :milliseconds],
-        event: [:alumiini, :git, :stop],
+        [:nopea, :git, :duration, :milliseconds],
+        event: [:nopea, :git, :stop],
         measurement: :duration,
         unit: {:native, :millisecond},
         tags: [:repo_name, :operation],
@@ -251,16 +251,16 @@ defmodule Alumiini.Metrics do
     [
       # Gauge: active workers
       last_value(
-        [:alumiini, :workers, :active],
-        event: [:alumiini, :worker, :count],
+        [:nopea, :workers, :active],
+        event: [:nopea, :worker, :count],
         measurement: :count,
         description: "Number of active worker processes"
       ),
 
       # Counter: worker restarts
       counter(
-        [:alumiini, :workers, :restarts, :total],
-        event: [:alumiini, :worker, :restart],
+        [:nopea, :workers, :restarts, :total],
+        event: [:nopea, :worker, :restart],
         tags: [:repo_name],
         description: "Worker process restarts"
       )
@@ -272,8 +272,8 @@ defmodule Alumiini.Metrics do
     [
       # Counter: cache hits/misses
       counter(
-        [:alumiini, :cache, :total],
-        event: [:alumiini, :cache, :access],
+        [:nopea, :cache, :total],
+        event: [:nopea, :cache, :access],
         tags: [:cache_name, :result],  # result: hit | miss
         description: "Cache access by result"
       )
@@ -284,8 +284,8 @@ defmodule Alumiini.Metrics do
   def error_metrics do
     [
       counter(
-        [:alumiini, :errors, :total],
-        event: [:alumiini, :error],
+        [:nopea, :errors, :total],
+        event: [:nopea, :error],
         tags: [:repo_name, :error_type],
         description: "Errors by type"
       )
@@ -298,24 +298,24 @@ end
 
 ```prometheus
 # Sync metrics
-alumiini_syncs_total{repo_name="my-app",trigger="webhook",outcome="success"} 42
-alumiini_sync_duration_milliseconds_bucket{repo_name="my-app",trigger="webhook",le="1000"} 38
-alumiini_resources_applied_total{repo_name="my-app",resource_kind="Deployment"} 15
+nopea_syncs_total{repo_name="my-app",trigger="webhook",outcome="success"} 42
+nopea_sync_duration_milliseconds_bucket{repo_name="my-app",trigger="webhook",le="1000"} 38
+nopea_resources_applied_total{repo_name="my-app",resource_kind="Deployment"} 15
 
 # Git metrics
-alumiini_git_operations_total{repo_name="my-app",operation="fetch",outcome="success"} 100
-alumiini_git_duration_milliseconds_bucket{repo_name="my-app",operation="fetch",le="5000"} 95
+nopea_git_operations_total{repo_name="my-app",operation="fetch",outcome="success"} 100
+nopea_git_duration_milliseconds_bucket{repo_name="my-app",operation="fetch",le="5000"} 95
 
 # Worker metrics
-alumiini_workers_active 10
-alumiini_workers_restarts_total{repo_name="my-app"} 2
+nopea_workers_active 10
+nopea_workers_restarts_total{repo_name="my-app"} 2
 
 # Cache metrics
-alumiini_cache_total{cache_name="commits",result="hit"} 500
-alumiini_cache_total{cache_name="commits",result="miss"} 50
+nopea_cache_total{cache_name="commits",result="hit"} 500
+nopea_cache_total{cache_name="commits",result="miss"} 50
 
 # Error metrics
-alumiini_errors_total{repo_name="my-app",error_type="git_timeout"} 3
+nopea_errors_total{repo_name="my-app",error_type="git_timeout"} 3
 ```
 
 ---
@@ -325,7 +325,7 @@ alumiini_errors_total{repo_name="my-app",error_type="git_timeout"} 3
 Using Elixir's `:telemetry` library:
 
 ```elixir
-defmodule Alumiini.Telemetry do
+defmodule Nopea.Telemetry do
   @moduledoc """
   Telemetry event emission.
   """
@@ -333,7 +333,7 @@ defmodule Alumiini.Telemetry do
   # Emit sync events
   def sync_started(repo_name, trigger) do
     :telemetry.execute(
-      [:alumiini, :sync, :start],
+      [:nopea, :sync, :start],
       %{system_time: System.system_time()},
       %{repo_name: repo_name, trigger: trigger}
     )
@@ -341,7 +341,7 @@ defmodule Alumiini.Telemetry do
 
   def sync_completed(repo_name, trigger, duration_ms, resources_applied) do
     :telemetry.execute(
-      [:alumiini, :sync, :stop],
+      [:nopea, :sync, :stop],
       %{duration: duration_ms},
       %{
         repo_name: repo_name,
@@ -354,7 +354,7 @@ defmodule Alumiini.Telemetry do
 
   def sync_failed(repo_name, trigger, duration_ms, error_type) do
     :telemetry.execute(
-      [:alumiini, :sync, :stop],
+      [:nopea, :sync, :stop],
       %{duration: duration_ms},
       %{
         repo_name: repo_name,
@@ -368,7 +368,7 @@ defmodule Alumiini.Telemetry do
   # Emit git events
   def git_operation(repo_name, operation, outcome, duration_ms) do
     :telemetry.execute(
-      [:alumiini, :git, :stop],
+      [:nopea, :git, :stop],
       %{duration: duration_ms},
       %{repo_name: repo_name, operation: operation, outcome: outcome}
     )
@@ -377,7 +377,7 @@ defmodule Alumiini.Telemetry do
   # Emit cache events
   def cache_access(cache_name, result) do
     :telemetry.execute(
-      [:alumiini, :cache, :access],
+      [:nopea, :cache, :access],
       %{},
       %{cache_name: cache_name, result: result}
     )
@@ -386,7 +386,7 @@ defmodule Alumiini.Telemetry do
   # Emit error events
   def error(repo_name, error_type, message) do
     :telemetry.execute(
-      [:alumiini, :error],
+      [:nopea, :error],
       %{},
       %{repo_name: repo_name, error_type: error_type, message: message}
     )
@@ -428,10 +428,10 @@ Following AHTI's SLO patterns:
 
 ```yaml
 groups:
-  - name: alumiini_alerts
+  - name: nopea_alerts
     rules:
       - alert: HighSyncLatency
-        expr: histogram_quantile(0.99, rate(alumiini_sync_duration_milliseconds_bucket[5m])) > 60000
+        expr: histogram_quantile(0.99, rate(nopea_sync_duration_milliseconds_bucket[5m])) > 60000
         for: 5m
         labels:
           severity: warning
@@ -440,8 +440,8 @@ groups:
 
       - alert: LowSyncSuccessRate
         expr: >
-          sum(rate(alumiini_syncs_total{outcome="success"}[5m])) /
-          sum(rate(alumiini_syncs_total[5m])) < 0.95
+          sum(rate(nopea_syncs_total{outcome="success"}[5m])) /
+          sum(rate(nopea_syncs_total[5m])) < 0.95
         for: 5m
         labels:
           severity: critical
@@ -449,7 +449,7 @@ groups:
           summary: "Sync success rate below 95%"
 
       - alert: HighWorkerRestarts
-        expr: rate(alumiini_workers_restarts_total[1h]) > 3
+        expr: rate(nopea_workers_restarts_total[1h]) > 3
         for: 5m
         labels:
           severity: warning
@@ -458,8 +458,8 @@ groups:
 
       - alert: LowCacheHitRate
         expr: >
-          sum(rate(alumiini_cache_total{result="hit"}[10m])) /
-          sum(rate(alumiini_cache_total[10m])) < 0.6
+          sum(rate(nopea_cache_total{result="hit"}[10m])) /
+          sum(rate(nopea_cache_total[10m])) < 0.6
         for: 10m
         labels:
           severity: warning
@@ -486,10 +486,10 @@ AluminiEvent maps to CDEvents (from ADR-003):
 
 ### TAPIO Integration
 
-TAPIO can correlate ALUMIINI events with infrastructure events:
+TAPIO can correlate NOPEA events with infrastructure events:
 
 ```
-ALUMIINI sync_started → TAPIO correlates with:
+NOPEA sync_started → TAPIO correlates with:
 ├── Network events (git fetch traffic)
 ├── Container events (new pods starting)
 └── K8s events (deployment rollout)
@@ -497,18 +497,18 @@ ALUMIINI sync_started → TAPIO correlates with:
 
 ### AHTI Integration
 
-AHTI stores ALUMIINI events for historical analysis:
+AHTI stores NOPEA events for historical analysis:
 
 ```
-ALUMIINI → CDEvents → NATS → AHTI → Query/Dashboards
+NOPEA → CDEvents → NATS → AHTI → Query/Dashboards
 ```
 
 ### KULTA Integration
 
-When `rolloutRef` is set, ALUMIINI triggers KULTA:
+When `rolloutRef` is set, NOPEA triggers KULTA:
 
 ```
-ALUMIINI sync_completed → KULTA deployment.started → progressive rollout
+NOPEA sync_completed → KULTA deployment.started → progressive rollout
 ```
 
 ---

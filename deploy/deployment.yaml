@@ -1,29 +1,29 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: alumiini-system
+  name: nopea-system
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: alumiini-controller
-  namespace: alumiini-system
+  name: nopea-controller
+  namespace: nopea-system
   labels:
-    app: alumiini-controller
+    app: nopea-controller
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: alumiini-controller
+      app: nopea-controller
   template:
     metadata:
       labels:
-        app: alumiini-controller
+        app: nopea-controller
     spec:
-      serviceAccountName: alumiini-controller
+      serviceAccountName: nopea-controller
       containers:
         - name: controller
-          image: alumiini:latest
+          image: nopea:latest
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -49,7 +49,7 @@ spec:
               memory: 64Mi
           volumeMounts:
             - name: repos
-              mountPath: /tmp/alumiini/repos
+              mountPath: /tmp/nopea/repos
             - name: ssh-keys
               mountPath: /root/.ssh
               readOnly: true
@@ -70,6 +70,6 @@ spec:
           emptyDir: {}
         - name: ssh-keys
           secret:
-            secretName: alumiini-ssh-keys
+            secretName: nopea-ssh-keys
             optional: true
             defaultMode: 0600

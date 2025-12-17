@@ -1,4 +1,4 @@
-defmodule Alumiini.Worker do
+defmodule Nopea.Worker do
   @moduledoc """
   GenServer worker for a single GitRepository.
 
@@ -13,7 +13,7 @@ defmodule Alumiini.Worker do
   use GenServer
   require Logger
 
-  alias Alumiini.{Cache, Git, K8s, Applier}
+  alias Nopea.{Cache, Git, K8s, Applier}
 
   defstruct [
     :config,
@@ -35,7 +35,7 @@ defmodule Alumiini.Worker do
           status: status()
         }
 
-  @repo_base_path "/tmp/alumiini/repos"
+  @repo_base_path "/tmp/nopea/repos"
 
   # Client API
 
@@ -67,7 +67,7 @@ defmodule Alumiini.Worker do
   """
   @spec whereis(String.t()) :: pid() | nil
   def whereis(repo_name) do
-    case Registry.lookup(Alumiini.Registry, repo_name) do
+    case Registry.lookup(Nopea.Registry, repo_name) do
       [{pid, _}] -> pid
       [] -> nil
     end
@@ -75,7 +75,7 @@ defmodule Alumiini.Worker do
 
   # Private helper for via tuple
   defp via_tuple(repo_name) do
-    {:via, Registry, {Alumiini.Registry, repo_name}}
+    {:via, Registry, {Nopea.Registry, repo_name}}
   end
 
   # Server Callbacks

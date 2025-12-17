@@ -1,8 +1,8 @@
 [package]
-name = "alumiini-git"
+name = "nopea-git"
 version = "0.1.0"
 edition = "2021"
-description = "Git operations port for ALUMIINI"
+description = "Git operations port for NOPEA"
 license = "Apache-2.0"
 
 [dependencies]

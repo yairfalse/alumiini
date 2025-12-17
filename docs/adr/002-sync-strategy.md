@@ -7,7 +7,7 @@
 
 ## Context
 
-How should ALUMIINI detect and react to Git changes?
+How should NOPEA detect and react to Git changes?
 
 Options:
 1. Webhook only (reactive)
@@ -63,7 +63,7 @@ Options:
 ### Webhook Handler
 
 ```elixir
-defmodule Alumiini.Webhook.Endpoint do
+defmodule Nopea.Webhook.Endpoint do
   use Plug.Router
 
   post "/webhook/github" do
@@ -89,7 +89,7 @@ end
 ### Poll Timer
 
 ```elixir
-defmodule Alumiini.Worker do
+defmodule Nopea.Worker do
   def init(config) do
     # Schedule first poll
     timer = schedule_poll(config.interval)
@@ -141,7 +141,7 @@ end
 
 ```yaml
 # In GitHub repo settings
-Webhook URL: https://alumiini.example.com/webhook/github
+Webhook URL: https://nopea.example.com/webhook/github
 Content type: application/json
 Secret: <shared-secret>
 Events: Push events
@@ -150,7 +150,7 @@ Events: Push events
 ### GitLab
 
 ```yaml
-Webhook URL: https://alumiini.example.com/webhook/gitlab
+Webhook URL: https://nopea.example.com/webhook/gitlab
 Secret Token: <shared-secret>
 Trigger: Push events
 ```
