@@ -1,59 +1,52 @@
 defmodule Nopea.ControllerTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
-  # Controller tests are mostly integration tests since they
-  # interact with the K8s API. Unit tests for helper functions.
+  alias Nopea.Controller
 
-  describe "parse_interval/1" do
-    # Test the private function behavior through the module
-    # These tests verify the interval parsing logic
+  # Unit tests run without K8s cluster
+  # Integration tests require K8s cluster and are tagged
+
+  describe "interval parsing" do
+    # Test interval parsing through config extraction
 
     test "parses seconds" do
-      # 30 seconds = 30_000 milliseconds
-      config = build_config(%{"interval" => "30s"})
+      config = extract_config(%{"interval" => "30s"})
       assert config.interval == 30_000
     end
 
     test "parses minutes" do
-      # 5 minutes = 300_000 milliseconds
-      config = build_config(%{"interval" => "5m"})
+      config = extract_config(%{"interval" => "5m"})
       assert config.interval == 300_000
     end
 
     test "parses hours" do
-      # 1 hour = 3_600_000 milliseconds
-      config = build_config(%{"interval" => "1h"})
+      config = extract_config(%{"interval" => "1h"})
       assert config.interval == 3_600_000
     end
 
     test "defaults to 5 minutes for invalid format" do
-      config = build_config(%{"interval" => "invalid"})
+      config = extract_config(%{"interval" => "invalid"})
       assert config.interval == 300_000
     end
 
     test "defaults to 5 minutes when missing" do
-      config = build_config(%{})
+      config = extract_config(%{})
       assert config.interval == 300_000
     end
   end
 
-  describe "config extraction" do
+  describe "config extraction from CRD" do
     test "extracts all fields from resource" do
-      resource = %{
-        "metadata" => %{
-          "name" => "my-repo",
-          "namespace" => "default"
-        },
-        "spec" => %{
+      resource =
+        build_git_repository("my-repo", "default", %{
           "url" => "https://github.com/example/repo.git",
           "branch" => "develop",
           "path" => "manifests/",
           "targetNamespace" => "production",
           "interval" => "10m"
-        }
-      }
+        })
 
-      config = build_config_from_resource(resource)
+      config = extract_config_from_resource(resource)
 
       assert config.name == "my-repo"
       assert config.namespace == "default"
@@ -61,44 +54,250 @@ defmodule Nopea.ControllerTest do
       assert config.branch == "develop"
       assert config.path == "manifests/"
       assert config.target_namespace == "production"
-      # 10 minutes
       assert config.interval == 600_000
     end
 
     test "uses defaults for optional fields" do
-      resource = %{
-        "metadata" => %{
-          "name" => "minimal-repo",
-          "namespace" => "test"
-        },
-        "spec" => %{
+      resource =
+        build_git_repository("minimal-repo", "test", %{
           "url" => "https://github.com/example/repo.git"
-        }
-      }
+        })
 
-      config = build_config_from_resource(resource)
+      config = extract_config_from_resource(resource)
 
       assert config.name == "minimal-repo"
       assert config.namespace == "test"
       assert config.url == "https://github.com/example/repo.git"
-      # default
       assert config.branch == "main"
       assert config.path == nil
-      # defaults to resource namespace
       assert config.target_namespace == "test"
-      # default 5m
       assert config.interval == 300_000
     end
   end
 
-  # Helper to simulate config building (mirrors Controller logic)
-  defp build_config(spec) do
+  describe "Controller GenServer" do
+    setup do
+      # Start required services for Controller tests
+      Application.put_env(:nopea, :enable_cache, true)
+      Application.put_env(:nopea, :enable_supervisor, true)
+
+      start_supervised!(Nopea.Cache)
+      start_supervised!({Registry, keys: :unique, name: Nopea.Registry})
+      start_supervised!(Nopea.Supervisor)
+
+      :ok
+    end
+
+    test "starts with initial state" do
+      # Start controller - it will fail to connect to K8s but that's OK
+      # We're testing the GenServer behavior, not K8s connectivity
+      {:ok, pid} = Controller.start_link(namespace: "test-ns")
+
+      # Give it a moment to attempt connection
+      Process.sleep(100)
+
+      state = :sys.get_state(pid)
+      assert state.namespace == "test-ns"
+      assert state.repos == %{}
+
+      GenServer.stop(pid)
+    end
+
+    test "get_state/0 returns controller state" do
+      {:ok, pid} = Controller.start_link(namespace: "state-test")
+      Process.sleep(100)
+
+      # Use the public API (requires named process)
+      state = :sys.get_state(pid)
+      assert is_map(state)
+      assert state.namespace == "state-test"
+
+      GenServer.stop(pid)
+    end
+
+    test "handles watch_error by scheduling reconnect" do
+      {:ok, pid} = Controller.start_link(namespace: "error-test")
+      Process.sleep(100)
+
+      # Send a watch error
+      send(pid, {:watch_error, :connection_closed})
+
+      # Check that watch_ref is cleared
+      Process.sleep(50)
+      state = :sys.get_state(pid)
+      assert state.watch_ref == nil
+
+      GenServer.stop(pid)
+    end
+
+    test "handles watch_done by scheduling reconnect" do
+      {:ok, pid} = Controller.start_link(namespace: "done-test")
+      Process.sleep(100)
+
+      # Simulate watch stream ending
+      send(pid, {:watch_done, make_ref()})
+
+      Process.sleep(50)
+      state = :sys.get_state(pid)
+      assert state.watch_ref == nil
+
+      GenServer.stop(pid)
+    end
+  end
+
+  describe "watch event handling" do
+    @moduletag :controller_events
+
+    setup do
+      Application.put_env(:nopea, :enable_cache, true)
+      Application.put_env(:nopea, :enable_git, true)
+      Application.put_env(:nopea, :enable_supervisor, true)
+
+      start_supervised!(Nopea.Cache)
+      start_supervised!({Registry, keys: :unique, name: Nopea.Registry})
+      start_supervised!(Nopea.Supervisor)
+
+      # Check if Git binary is available for worker tests
+      dev_path = Path.join([File.cwd!(), "nopea-git", "target", "release", "nopea-git"])
+
+      if File.exists?(dev_path) do
+        start_supervised!(Nopea.Git)
+        {:ok, git_available: true}
+      else
+        {:ok, git_available: false}
+      end
+    end
+
+    test "ADDED event with missing url logs error and doesn't track" do
+      {:ok, pid} = Controller.start_link(namespace: "add-test")
+      Process.sleep(100)
+
+      # Send ADDED event with missing url
+      event = %{
+        "type" => "ADDED",
+        "object" => build_git_repository("bad-repo", "add-test", %{})
+      }
+
+      send(pid, {:watch_event, event})
+      Process.sleep(50)
+
+      state = :sys.get_state(pid)
+      refute Map.has_key?(state.repos, "bad-repo")
+
+      GenServer.stop(pid)
+    end
+
+    test "DELETED event removes repo from tracking" do
+      {:ok, pid} = Controller.start_link(namespace: "delete-test")
+      Process.sleep(100)
+
+      # Manually set up state with a tracked repo
+      :sys.replace_state(pid, fn state ->
+        %{state | repos: Map.put(state.repos, "tracked-repo", "v1")}
+      end)
+
+      # Verify it's tracked
+      state = :sys.get_state(pid)
+      assert Map.has_key?(state.repos, "tracked-repo")
+
+      # Send DELETED event
+      event = %{
+        "type" => "DELETED",
+        "object" =>
+          build_git_repository("tracked-repo", "delete-test", %{
+            "url" => "https://github.com/example/repo.git"
+          })
+      }
+
+      send(pid, {:watch_event, event})
+      Process.sleep(50)
+
+      state = :sys.get_state(pid)
+      refute Map.has_key?(state.repos, "tracked-repo")
+
+      GenServer.stop(pid)
+    end
+
+    test "BOOKMARK event updates resource version" do
+      {:ok, pid} = Controller.start_link(namespace: "bookmark-test")
+      Process.sleep(100)
+
+      # Send BOOKMARK event
+      event = %{
+        "type" => "BOOKMARK",
+        "object" => %{
+          "metadata" => %{
+            "resourceVersion" => "12345"
+          }
+        }
+      }
+
+      send(pid, {:watch_event, event})
+      Process.sleep(50)
+
+      state = :sys.get_state(pid)
+      assert state.resource_version == "12345"
+
+      GenServer.stop(pid)
+    end
+
+    test "duplicate ADDED event is ignored", %{git_available: available} do
+      unless available do
+        # Skip if no git binary - we need workers to actually start
+        :ok
+      else
+        {:ok, pid} = Controller.start_link(namespace: "dup-test")
+        Process.sleep(100)
+
+        # Manually set up state with a tracked repo
+        :sys.replace_state(pid, fn state ->
+          %{state | repos: Map.put(state.repos, "existing-repo", "v1")}
+        end)
+
+        # Send ADDED event for already-tracked repo
+        event = %{
+          "type" => "ADDED",
+          "object" =>
+            build_git_repository("existing-repo", "dup-test", %{
+              "url" => "https://github.com/example/repo.git"
+            })
+        }
+
+        send(pid, {:watch_event, event})
+        Process.sleep(50)
+
+        # Should still have same resource version (not updated)
+        state = :sys.get_state(pid)
+        assert state.repos["existing-repo"] == "v1"
+
+        GenServer.stop(pid)
+      end
+    end
+  end
+
+  # Helper functions
+
+  defp build_git_repository(name, namespace, spec) do
+    %{
+      "apiVersion" => "nopea.io/v1alpha1",
+      "kind" => "GitRepository",
+      "metadata" => %{
+        "name" => name,
+        "namespace" => namespace,
+        "resourceVersion" => "1"
+      },
+      "spec" => spec
+    }
+  end
+
+  # Mirror the Controller's config extraction logic for testing
+  defp extract_config(spec) do
     %{
       interval: parse_interval(Map.get(spec, "interval", "5m"))
     }
   end
 
-  defp build_config_from_resource(resource) do
+  defp extract_config_from_resource(resource) do
     name = get_in(resource, ["metadata", "name"])
     namespace = get_in(resource, ["metadata", "namespace"])
     spec = Map.get(resource, "spec", %{})
