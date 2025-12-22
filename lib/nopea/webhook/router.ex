@@ -36,21 +36,30 @@ defmodule Nopea.Webhook.Router do
     send_resp(conn, 200, Jason.encode!(%{status: "ok"}))
   end
 
+  # Valid repo name pattern: alphanumeric, hyphens, underscores, dots
+  @repo_name_pattern ~r/^[a-zA-Z0-9._-]+$/
+
   # Webhook endpoint
   post "/webhook/:repo" do
     repo_name = conn.params["repo"]
-    headers = conn.req_headers
-    raw_body = conn.private[:raw_body] || ""
 
-    provider = Webhook.detect_provider(headers)
+    # Validate repo name to prevent log injection
+    unless Regex.match?(@repo_name_pattern, repo_name) do
+      send_resp(conn, 400, Jason.encode!(%{error: "invalid_repo_name"}))
+    else
+      headers = conn.req_headers
+      raw_body = conn.private[:raw_body] || ""
 
-    case provider do
-      :unknown ->
-        Logger.warning("Unknown webhook provider for repo: #{repo_name}")
-        send_resp(conn, 400, Jason.encode!(%{error: "unknown_provider"}))
+      provider = Webhook.detect_provider(headers)
 
-      provider ->
-        handle_webhook(conn, repo_name, provider, headers, raw_body)
+      case provider do
+        :unknown ->
+          Logger.warning("Unknown webhook provider for repo: #{repo_name}")
+          send_resp(conn, 400, Jason.encode!(%{error: "unknown_provider"}))
+
+        provider ->
+          handle_webhook(conn, repo_name, provider, headers, raw_body)
+      end
     end
   end
 
@@ -62,16 +71,28 @@ defmodule Nopea.Webhook.Router do
   # Private functions
 
   defp handle_webhook(conn, repo_name, provider, headers, raw_body) do
-    secret = Application.get_env(:nopea, :webhook_secret, "")
+    secret = Application.get_env(:nopea, :webhook_secret)
     signature = get_signature(headers, provider)
 
-    case Webhook.verify_signature(raw_body, signature, secret, provider) do
-      :ok ->
-        process_webhook(conn, repo_name, provider)
+    # Reject if webhook secret is not configured (security requirement)
+    cond do
+      is_nil(secret) or secret == "" ->
+        Logger.error("Webhook secret not configured, rejecting request")
+        send_resp(conn, 500, Jason.encode!(%{error: "webhook_not_configured"}))
 
-      {:error, :invalid_signature} ->
-        Logger.warning("Invalid signature for webhook: #{repo_name}")
-        send_resp(conn, 401, Jason.encode!(%{error: "invalid_signature"}))
+      signature == "" ->
+        Logger.warning("Missing signature header for webhook: #{repo_name}")
+        send_resp(conn, 401, Jason.encode!(%{error: "missing_signature"}))
+
+      true ->
+        case Webhook.verify_signature(raw_body, signature, secret, provider) do
+          :ok ->
+            process_webhook(conn, repo_name, provider)
+
+          {:error, :invalid_signature} ->
+            Logger.warning("Invalid signature for webhook: #{repo_name}")
+            send_resp(conn, 401, Jason.encode!(%{error: "invalid_signature"}))
+        end
     end
   end
 
@@ -103,7 +124,7 @@ defmodule Nopea.Webhook.Router do
 
       {:error, reason} ->
         Logger.warning("Failed to parse webhook for #{repo_name}: #{inspect(reason)}")
-        send_resp(conn, 400, Jason.encode!(%{error: inspect(reason)}))
+        send_resp(conn, 400, Jason.encode!(%{error: "invalid_payload"}))
     end
   end
 

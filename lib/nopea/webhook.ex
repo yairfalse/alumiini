@@ -115,6 +115,9 @@ defmodule Nopea.Webhook do
   @doc """
   Extracts the branch name from a ref string.
 
+  Used to convert git refs like "refs/heads/main" to just "main"
+  for matching against GitRepository branch configurations.
+
   ## Examples
 
       iex> Nopea.Webhook.extract_branch("refs/heads/main")

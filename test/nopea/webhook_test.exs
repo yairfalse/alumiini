@@ -1,10 +1,13 @@
 defmodule Nopea.WebhookTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
   import Plug.Conn
   import Plug.Test
 
   alias Nopea.Webhook
   alias Nopea.Webhook.Router
+
+  # Suppress warning logs in tests
+  @moduletag capture_log: true
 
   describe "GitHub push events" do
     test "parses push event and extracts commit" do
@@ -122,6 +125,22 @@ defmodule Nopea.WebhookTest do
   end
 
   describe "Router endpoint" do
+    setup do
+      # Store original config value
+      original_secret = Application.get_env(:nopea, :webhook_secret)
+
+      on_exit(fn ->
+        # Restore original config
+        if original_secret do
+          Application.put_env(:nopea, :webhook_secret, original_secret)
+        else
+          Application.delete_env(:nopea, :webhook_secret)
+        end
+      end)
+
+      :ok
+    end
+
     test "returns 200 for valid GitHub push webhook" do
       payload = Jason.encode!(github_push_payload("abc123"))
       signature = compute_github_signature(payload, "test-secret")
@@ -132,7 +151,6 @@ defmodule Nopea.WebhookTest do
         |> put_req_header("x-github-event", "push")
         |> put_req_header("x-hub-signature-256", signature)
 
-      # Set secret in config for test
       Application.put_env(:nopea, :webhook_secret, "test-secret")
 
       conn = Router.call(conn, Router.init([]))
@@ -155,6 +173,58 @@ defmodule Nopea.WebhookTest do
       conn = Router.call(conn, Router.init([]))
 
       assert conn.status == 401
+      assert conn.resp_body =~ "invalid_signature"
+    end
+
+    test "returns 401 for missing GitHub signature header" do
+      payload = Jason.encode!(github_push_payload("abc123"))
+
+      conn =
+        conn(:post, "/webhook/test-repo", payload)
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("x-github-event", "push")
+
+      Application.put_env(:nopea, :webhook_secret, "test-secret")
+
+      conn = Router.call(conn, Router.init([]))
+
+      assert conn.status == 401
+      assert conn.resp_body =~ "missing_signature"
+    end
+
+    test "returns 401 for missing GitLab token header" do
+      payload = Jason.encode!(gitlab_push_payload("abc123"))
+
+      conn =
+        conn(:post, "/webhook/test-repo", payload)
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("x-gitlab-event", "Push Hook")
+
+      Application.put_env(:nopea, :webhook_secret, "test-secret")
+
+      conn = Router.call(conn, Router.init([]))
+
+      assert conn.status == 401
+      assert conn.resp_body =~ "missing_signature"
+    end
+
+    test "returns 500 when webhook secret not configured" do
+      payload = Jason.encode!(github_push_payload("abc123"))
+      signature = compute_github_signature(payload, "any-secret")
+
+      conn =
+        conn(:post, "/webhook/test-repo", payload)
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("x-github-event", "push")
+        |> put_req_header("x-hub-signature-256", signature)
+
+      # Ensure no secret is configured
+      Application.delete_env(:nopea, :webhook_secret)
+
+      conn = Router.call(conn, Router.init([]))
+
+      assert conn.status == 500
+      assert conn.resp_body =~ "webhook_not_configured"
     end
 
     test "returns 400 for unknown provider" do
@@ -167,6 +237,21 @@ defmodule Nopea.WebhookTest do
       conn = Router.call(conn, Router.init([]))
 
       assert conn.status == 400
+      assert conn.resp_body =~ "unknown_provider"
+    end
+
+    test "returns 400 for invalid repo name" do
+      payload = Jason.encode!(github_push_payload("abc123"))
+
+      conn =
+        conn(:post, "/webhook/repo<script>", payload)
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("x-github-event", "push")
+
+      conn = Router.call(conn, Router.init([]))
+
+      assert conn.status == 400
+      assert conn.resp_body =~ "invalid_repo_name"
     end
 
     test "returns 200 for valid GitLab push webhook" do
