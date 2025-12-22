@@ -155,5 +155,141 @@ defmodule Nopea.ApplierTest do
 
       assert {:error, :missing_name} = Applier.validate_manifest(manifest)
     end
+
+    test "returns error for missing metadata entirely" do
+      manifest = %{
+        "apiVersion" => "v1",
+        "kind" => "ConfigMap"
+      }
+
+      assert {:error, :missing_metadata} = Applier.validate_manifest(manifest)
+    end
+  end
+
+  describe "read_manifests_from_path/1" do
+    setup do
+      # Create a temp directory for test files
+      tmp_dir =
+        Path.join(System.tmp_dir!(), "nopea_applier_test_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp_dir)
+
+      on_exit(fn ->
+        File.rm_rf!(tmp_dir)
+      end)
+
+      {:ok, tmp_dir: tmp_dir}
+    end
+
+    test "reads single YAML file", %{tmp_dir: tmp_dir} do
+      yaml = """
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: test-config
+      data:
+        key: value
+      """
+
+      File.write!(Path.join(tmp_dir, "config.yaml"), yaml)
+
+      assert {:ok, [manifest]} = Applier.read_manifests_from_path(tmp_dir)
+      assert manifest["kind"] == "ConfigMap"
+      assert manifest["metadata"]["name"] == "test-config"
+    end
+
+    test "reads multiple YAML files sorted alphabetically", %{tmp_dir: tmp_dir} do
+      yaml1 = """
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: b-config
+      """
+
+      yaml2 = """
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: a-config
+      """
+
+      File.write!(Path.join(tmp_dir, "02-second.yaml"), yaml1)
+      File.write!(Path.join(tmp_dir, "01-first.yaml"), yaml2)
+
+      assert {:ok, manifests} = Applier.read_manifests_from_path(tmp_dir)
+      assert length(manifests) == 2
+      # Should be sorted alphabetically by filename
+      assert Enum.at(manifests, 0)["metadata"]["name"] == "a-config"
+      assert Enum.at(manifests, 1)["metadata"]["name"] == "b-config"
+    end
+
+    test "reads multi-document YAML files", %{tmp_dir: tmp_dir} do
+      yaml = """
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: config-1
+      ---
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: config-2
+      """
+
+      File.write!(Path.join(tmp_dir, "multi.yaml"), yaml)
+
+      assert {:ok, manifests} = Applier.read_manifests_from_path(tmp_dir)
+      assert length(manifests) == 2
+      assert Enum.at(manifests, 0)["metadata"]["name"] == "config-1"
+      assert Enum.at(manifests, 1)["metadata"]["name"] == "config-2"
+    end
+
+    test "reads .yml extension files", %{tmp_dir: tmp_dir} do
+      yaml = """
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: yml-config
+      """
+
+      File.write!(Path.join(tmp_dir, "config.yml"), yaml)
+
+      assert {:ok, [manifest]} = Applier.read_manifests_from_path(tmp_dir)
+      assert manifest["metadata"]["name"] == "yml-config"
+    end
+
+    test "reads from nested directories", %{tmp_dir: tmp_dir} do
+      nested_dir = Path.join(tmp_dir, "subdir")
+      File.mkdir_p!(nested_dir)
+
+      yaml = """
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nested-config
+      """
+
+      File.write!(Path.join(nested_dir, "config.yaml"), yaml)
+
+      assert {:ok, [manifest]} = Applier.read_manifests_from_path(tmp_dir)
+      assert manifest["metadata"]["name"] == "nested-config"
+    end
+
+    test "returns empty list for directory with no YAML files", %{tmp_dir: tmp_dir} do
+      # Create a non-YAML file
+      File.write!(Path.join(tmp_dir, "readme.txt"), "not yaml")
+
+      assert {:ok, []} = Applier.read_manifests_from_path(tmp_dir)
+    end
+
+    test "returns error for invalid YAML file", %{tmp_dir: tmp_dir} do
+      invalid_yaml = """
+      invalid: yaml: [
+      """
+
+      File.write!(Path.join(tmp_dir, "bad.yaml"), invalid_yaml)
+
+      assert {:error, {:parse_failed, _errors}} = Applier.read_manifests_from_path(tmp_dir)
+    end
   end
 end

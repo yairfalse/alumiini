@@ -22,11 +22,15 @@ defmodule Nopea.WorkerTest do
 
       # Clean up test repo directory using system temp dir
       repo_base = Path.join(System.tmp_dir!(), "nopea/repos")
+
       case File.rm_rf(repo_base) do
-        {:ok, _} -> :ok
+        {:ok, _} ->
+          :ok
+
         {:error, reason, _} ->
           IO.puts("Warning: Failed to clean repo directory #{repo_base}: #{inspect(reason)}")
       end
+
       File.mkdir_p!(repo_base)
 
       # Cleanup cloned repos on exit
