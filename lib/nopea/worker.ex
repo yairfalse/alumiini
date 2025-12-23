@@ -13,7 +13,8 @@ defmodule Nopea.Worker do
   use GenServer
   require Logger
 
-  alias Nopea.{Cache, Git, K8s, Applier}
+  alias Nopea.{Cache, Git, K8s, Applier, Events}
+  alias Nopea.Events.Emitter
 
   defstruct [
     :config,
@@ -190,6 +191,7 @@ defmodule Nopea.Worker do
   defp do_sync(state) do
     config = state.config
     repo_path = repo_path(config.name)
+    start_time = System.monotonic_time(:millisecond)
 
     Logger.info("Syncing repo: #{config.name} from #{config.url}")
     update_crd_status(state, :syncing, "Syncing from git")
@@ -197,6 +199,7 @@ defmodule Nopea.Worker do
     with {:ok, commit_sha} <- Git.sync(config.url, config.branch, repo_path),
          {:ok, count} <- apply_manifests_from_repo(state, repo_path) do
       now = DateTime.utc_now()
+      duration_ms = System.monotonic_time(:millisecond) - start_time
 
       new_state = %{
         state
@@ -217,12 +220,20 @@ defmodule Nopea.Worker do
       # Update CRD status
       update_crd_status(new_state, :synced, "Applied #{count} manifests")
 
+      # Emit CDEvent
+      emit_sync_event(state, new_state, count, duration_ms)
+
       Logger.info("Sync completed for #{config.name}: commit=#{commit_sha}, manifests=#{count}")
       {:ok, new_state}
     else
       {:error, reason} = error ->
+        duration_ms = System.monotonic_time(:millisecond) - start_time
         Logger.error("Sync failed for #{config.name}: #{inspect(reason)}")
         update_crd_status(state, :failed, "Sync failed: #{inspect(reason)}")
+
+        # Emit failure CDEvent
+        emit_failure_event(state, reason, duration_ms)
+
         error
     end
   end
@@ -337,5 +348,58 @@ defmodule Nopea.Worker do
     # Reconcile less frequently than poll (2x interval)
     timer = Process.send_after(self(), :reconcile, state.config.interval * 2)
     %{state | reconcile_timer: timer}
+  end
+
+  # CDEvents emission helpers
+
+  defp emit_sync_event(old_state, new_state, manifest_count, duration_ms) do
+    config = new_state.config
+
+    event_opts = %{
+      commit: new_state.last_commit,
+      namespace: config.target_namespace,
+      manifest_count: manifest_count,
+      duration_ms: duration_ms,
+      source_url: config.url
+    }
+
+    event =
+      if old_state.last_commit == nil do
+        # First sync - service deployed
+        Events.service_deployed(config.name, event_opts)
+      else
+        # Subsequent sync - service upgraded
+        Events.service_upgraded(
+          config.name,
+          Map.put(event_opts, :previous_commit, old_state.last_commit)
+        )
+      end
+
+    maybe_emit(event)
+  end
+
+  defp emit_failure_event(state, reason, duration_ms) do
+    config = state.config
+
+    event =
+      Events.sync_failed(config.name, %{
+        namespace: config.target_namespace,
+        error: reason,
+        commit: state.last_commit,
+        duration_ms: duration_ms
+      })
+
+    maybe_emit(event)
+  end
+
+  defp maybe_emit(event) do
+    # Check if emitter is running
+    case Process.whereis(Nopea.Events.Emitter) do
+      nil ->
+        :ok
+
+      pid ->
+        Emitter.emit(pid, event)
+    end
   end
 end

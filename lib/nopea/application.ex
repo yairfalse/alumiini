@@ -3,6 +3,8 @@ defmodule Nopea.Application do
   NOPEA OTP Application.
 
   Supervision tree:
+  - Nopea.ULID (monotonic ID generator)
+  - Nopea.Events.Emitter (CDEvents HTTP emitter, optional)
   - Nopea.Cache (ETS storage)
   - Nopea.Registry (process name registry)
   - Nopea.Git (Rust Port GenServer)
@@ -17,6 +19,7 @@ defmodule Nopea.Application do
   - `enable_git` - Enables Git GenServer (default: true)
   - `enable_supervisor` - Enables Supervisor and Registry (default: true)
   - `enable_controller` - Enables Controller (default: true)
+  - `cdevents_endpoint` - CDEvents HTTP endpoint URL (nil to disable)
 
   ## Service Dependencies
 
@@ -35,7 +38,18 @@ defmodule Nopea.Application do
 
   @impl true
   def start(_type, _args) do
-    children = []
+    # ULID generator (monotonic, needed for events)
+    children = [Nopea.ULID]
+
+    # CDEvents emitter (optional, enabled when endpoint is configured)
+    children =
+      case Application.get_env(:nopea, :cdevents_endpoint) do
+        nil ->
+          children
+
+        endpoint ->
+          children ++ [{Nopea.Events.Emitter, endpoint: endpoint}]
+      end
 
     # ETS cache for commits, resources, sync state
     children =
