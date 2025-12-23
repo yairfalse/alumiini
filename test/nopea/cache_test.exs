@@ -96,4 +96,72 @@ defmodule Nopea.CacheTest do
       assert {:error, :not_found} = Cache.get_sync_state("unknown")
     end
   end
+
+  describe "last applied cache (for drift detection)" do
+    test "stores and retrieves last-applied manifest" do
+      repo_name = "test-repo-#{:rand.uniform(1000)}"
+      resource_key = "Deployment/default/my-app"
+
+      manifest = %{
+        "apiVersion" => "apps/v1",
+        "kind" => "Deployment",
+        "metadata" => %{"name" => "my-app"},
+        "spec" => %{"replicas" => 3}
+      }
+
+      :ok = Cache.put_last_applied(repo_name, resource_key, manifest)
+      assert {:ok, ^manifest} = Cache.get_last_applied(repo_name, resource_key)
+    end
+
+    test "returns error for unknown resource" do
+      assert {:error, :not_found} = Cache.get_last_applied("repo", "unknown")
+    end
+
+    test "lists all last-applied manifests for repo" do
+      repo_name = "test-repo-#{:rand.uniform(1000)}"
+
+      manifest1 = %{"kind" => "Deployment", "metadata" => %{"name" => "app1"}}
+      manifest2 = %{"kind" => "Service", "metadata" => %{"name" => "app1"}}
+
+      :ok = Cache.put_last_applied(repo_name, "Deployment/default/app1", manifest1)
+      :ok = Cache.put_last_applied(repo_name, "Service/default/app1", manifest2)
+
+      manifests = Cache.list_last_applied(repo_name)
+      assert length(manifests) == 2
+
+      keys = Enum.map(manifests, fn {key, _} -> key end)
+      assert "Deployment/default/app1" in keys
+      assert "Service/default/app1" in keys
+    end
+
+    test "clears all last-applied manifests for repo" do
+      repo_name = "test-repo-#{:rand.uniform(1000)}"
+
+      :ok = Cache.put_last_applied(repo_name, "Deployment/default/app", %{"test" => true})
+      :ok = Cache.clear_last_applied(repo_name)
+
+      assert Cache.list_last_applied(repo_name) == []
+    end
+
+    test "deletes specific last-applied manifest" do
+      repo_name = "test-repo-#{:rand.uniform(1000)}"
+      resource_key = "ConfigMap/default/config"
+
+      :ok = Cache.put_last_applied(repo_name, resource_key, %{"data" => %{}})
+      :ok = Cache.delete_last_applied(repo_name, resource_key)
+
+      assert {:error, :not_found} = Cache.get_last_applied(repo_name, resource_key)
+    end
+
+    test "updates existing last-applied manifest" do
+      repo_name = "test-repo-#{:rand.uniform(1000)}"
+      resource_key = "Deployment/default/app"
+
+      :ok = Cache.put_last_applied(repo_name, resource_key, %{"spec" => %{"replicas" => 1}})
+      :ok = Cache.put_last_applied(repo_name, resource_key, %{"spec" => %{"replicas" => 3}})
+
+      assert {:ok, manifest} = Cache.get_last_applied(repo_name, resource_key)
+      assert manifest["spec"]["replicas"] == 3
+    end
+  end
 end

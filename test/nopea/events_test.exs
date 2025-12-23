@@ -81,6 +81,53 @@ defmodule Nopea.EventsTest do
     end
   end
 
+  describe "drift_detected/2 builder" do
+    test "creates a service.drifted event with drift details" do
+      event =
+        Events.drift_detected("my-app", %{
+          resource_key: "Deployment/production/my-app",
+          drift_type: :manual_drift,
+          namespace: "production",
+          commit: "abc123",
+          action: :healed
+        })
+
+      assert event.type == "dev.nopea.service.drifted.0.1.0"
+      assert event.source == "/nopea/worker/my-app"
+      assert event.subject.id == "Deployment/production/my-app"
+      assert event.subject.content.drift_type == "manual_drift"
+      assert event.subject.content.repository == "my-app"
+      assert event.subject.content.action == "healed"
+    end
+
+    test "handles all drift types" do
+      for drift_type <- [:git_change, :manual_drift, :conflict] do
+        event =
+          Events.drift_detected("test-repo", %{
+            resource_key: "ConfigMap/default/test",
+            drift_type: drift_type
+          })
+
+        assert event.subject.content.drift_type == Atom.to_string(drift_type)
+      end
+    end
+
+    test "serializes to JSON correctly" do
+      event =
+        Events.drift_detected("my-app", %{
+          resource_key: "Deployment/prod/app",
+          drift_type: :conflict,
+          namespace: "prod"
+        })
+
+      {:ok, json} = Events.to_json(event)
+      decoded = Jason.decode!(json)
+
+      assert decoded["type"] == "dev.nopea.service.drifted.0.1.0"
+      assert decoded["subject"]["content"]["drift_type"] == "conflict"
+    end
+  end
+
   describe "CDEvent struct" do
     test "new/1 creates a valid event with required context fields" do
       event =

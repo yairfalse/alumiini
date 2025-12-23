@@ -13,7 +13,7 @@ defmodule Nopea.Worker do
   use GenServer
   require Logger
 
-  alias Nopea.{Cache, Git, K8s, Applier, Events}
+  alias Nopea.{Cache, Drift, Git, K8s, Applier, Events}
   alias Nopea.Events.Emitter
 
   defstruct [
@@ -159,14 +159,19 @@ defmodule Nopea.Worker do
   def handle_info(:reconcile, state) do
     Logger.debug("Reconcile triggered for: #{state.config.name}")
 
-    # Re-apply manifests to fix any drift
     new_state =
-      case apply_manifests(state) do
-        {:ok, _count} ->
-          %{state | status: :synced}
+      case reconcile_with_drift_detection(state) do
+        {:ok, drift_count, apply_count} ->
+          if drift_count > 0 do
+            Logger.info(
+              "Reconcile healed #{drift_count} drifted resources for #{state.config.name}"
+            )
+          end
+
+          if apply_count > 0, do: %{state | status: :synced}, else: state
 
         {:error, reason} ->
-          Logger.warning("Reconcile apply failed for #{state.config.name}: #{inspect(reason)}")
+          Logger.warning("Reconcile failed for #{state.config.name}: #{inspect(reason)}")
           state
       end
 
@@ -245,19 +250,116 @@ defmodule Nopea.Worker do
     with {:ok, files} <- list_manifest_files(repo_path, config.path),
          {:ok, manifests} <- read_and_parse_manifests(repo_path, config.path, files) do
       Logger.info("Found #{length(manifests)} manifests in #{manifest_path}")
-      K8s.apply_manifests(manifests, config.target_namespace)
+
+      case K8s.apply_manifests(manifests, config.target_namespace) do
+        {:ok, count} ->
+          # Store last-applied manifests for drift detection
+          store_last_applied(config.name, manifests)
+          {:ok, count}
+
+        error ->
+          error
+      end
     end
   end
 
-  defp apply_manifests(state) do
+  # Store normalized manifests for drift detection
+  defp store_last_applied(repo_name, manifests) do
+    if Cache.available?() do
+      Enum.each(manifests, fn manifest ->
+        resource_key = Applier.resource_key(manifest)
+        normalized = Drift.normalize(manifest)
+        Cache.put_last_applied(repo_name, resource_key, normalized)
+      end)
+    end
+  end
+
+  # Reconcile with drift detection - only re-apply changed resources
+  defp reconcile_with_drift_detection(state) do
     config = state.config
     repo_path = repo_path(config.name)
 
-    if File.exists?(repo_path) do
-      apply_manifests_from_repo(state, repo_path)
-    else
+    if not File.exists?(repo_path) do
       {:error, :repo_not_cloned}
+    else
+      with {:ok, files} <- list_manifest_files(repo_path, config.path),
+           {:ok, manifests} <- read_and_parse_manifests(repo_path, config.path, files) do
+        # Check each manifest for drift
+        {drifted, unchanged} = detect_drifted_manifests(config.name, manifests)
+
+        Logger.debug(
+          "Drift detection for #{config.name}: #{length(drifted)} changed, #{length(unchanged)} unchanged"
+        )
+
+        # Only re-apply drifted resources
+        if Enum.empty?(drifted) do
+          {:ok, 0, 0}
+        else
+          # Emit CDEvents for detected drift
+          emit_drift_events(state, drifted)
+
+          # Re-apply drifted manifests
+          case K8s.apply_manifests(drifted, config.target_namespace) do
+            {:ok, count} ->
+              # Update cache with new state
+              store_last_applied(config.name, drifted)
+              {:ok, length(drifted), count}
+
+            {:error, _} = error ->
+              error
+          end
+        end
+      end
     end
+  end
+
+  # Detect which manifests have drifted from last-applied state
+  defp detect_drifted_manifests(repo_name, manifests) do
+    if not Cache.available?() do
+      # No cache - treat all as drifted
+      {manifests, []}
+    else
+      Enum.split_with(manifests, fn manifest ->
+        resource_key = Applier.resource_key(manifest)
+        desired_normalized = Drift.normalize(manifest)
+
+        case Cache.get_last_applied(repo_name, resource_key) do
+          {:error, :not_found} ->
+            # New resource - treat as drifted (needs apply)
+            true
+
+          {:ok, last_applied} ->
+            # Compare desired to last-applied
+            case Drift.three_way_diff(last_applied, desired_normalized, last_applied) do
+              :no_drift -> false
+              {:git_change, _} -> true
+              # For now, without K8s GET, we can't detect manual drift
+              # So we only re-apply on git changes
+              _ -> false
+            end
+        end
+      end)
+    end
+  end
+
+  # Emit CDEvents for drifted resources
+  defp emit_drift_events(state, drifted_manifests) do
+    config = state.config
+
+    Enum.each(drifted_manifests, fn manifest ->
+      resource_key = Applier.resource_key(manifest)
+
+      event =
+        Events.drift_detected(config.name, %{
+          resource_key: resource_key,
+          drift_type: :git_change,
+          namespace: config.target_namespace,
+          commit: state.last_commit,
+          action: :healed
+        })
+
+      maybe_emit(event)
+    end)
   end
 
   defp list_manifest_files(repo_path, subpath) do

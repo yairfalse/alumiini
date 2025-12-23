@@ -60,7 +60,9 @@ defmodule Nopea.Events do
     service_upgraded: "dev.cdevents.service.upgraded.0.3.0",
     service_removed: "dev.cdevents.service.removed.0.3.0",
     environment_created: "dev.cdevents.environment.created.0.3.0",
-    environment_modified: "dev.cdevents.environment.modified.0.3.0"
+    environment_modified: "dev.cdevents.environment.modified.0.3.0",
+    # Custom Nopea event for drift detection
+    service_drifted: "dev.nopea.service.drifted.0.1.0"
   }
 
   @doc """
@@ -208,6 +210,49 @@ defmodule Nopea.Events do
         error: normalize_error(opts[:error]),
         commit: opts[:commit],
         duration_ms: opts[:duration_ms]
+      }
+    })
+  end
+
+  @doc """
+  Creates a service.drifted event when drift is detected.
+
+  ## Parameters
+
+  - `repo_name` - Repository name
+  - `opts` - Map with:
+    - `:resource_key` (required) - Resource identifier (Kind/Namespace/Name)
+    - `:drift_type` (required) - Type of drift (:git_change, :manual_drift, :conflict)
+    - `:namespace` - Target namespace (default: "default")
+    - `:commit` - Current commit SHA
+    - `:action` - Action taken (:healed, :reported)
+
+  ## Example
+
+      Events.drift_detected("my-app", %{
+        resource_key: "Deployment/production/my-app",
+        drift_type: :manual_drift,
+        namespace: "production",
+        action: :healed
+      })
+  """
+  @spec drift_detected(String.t(), map()) :: t()
+  def drift_detected(repo_name, opts) do
+    namespace = Map.get(opts, :namespace, "default")
+    drift_type = Map.fetch!(opts, :drift_type)
+    resource_key = Map.fetch!(opts, :resource_key)
+
+    new(%{
+      type: :service_drifted,
+      source: "/nopea/worker/#{repo_name}",
+      subject_id: resource_key,
+      content: %{
+        environment: %{id: namespace, source: "/nopea"},
+        repository: repo_name,
+        drift_type: Atom.to_string(drift_type),
+        resource_key: resource_key,
+        commit: opts[:commit],
+        action: opts[:action] && Atom.to_string(opts[:action])
       }
     })
   end

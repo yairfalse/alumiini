@@ -17,6 +17,7 @@ defmodule Nopea.Cache do
   @commits_table :nopea_commits
   @resources_table :nopea_resources
   @sync_states_table :nopea_sync_states
+  @last_applied_table :nopea_last_applied
 
   # Client API
 
@@ -130,6 +131,66 @@ defmodule Nopea.Cache do
     end
   end
 
+  # ── Last Applied Manifests (for three-way drift detection) ─────────────────
+
+  @doc """
+  Stores the last-applied manifest for a resource.
+
+  Used for three-way drift detection. The manifest should be normalized
+  (K8s-managed fields stripped) before storing.
+  """
+  @spec put_last_applied(String.t(), String.t(), map()) :: :ok
+  def put_last_applied(repo_name, resource_key, manifest) do
+    :ets.insert(@last_applied_table, {{repo_name, resource_key}, manifest, DateTime.utc_now()})
+    :ok
+  end
+
+  @doc """
+  Retrieves the last-applied manifest for a resource.
+  """
+  @spec get_last_applied(String.t(), String.t()) :: {:ok, map()} | {:error, :not_found}
+  def get_last_applied(repo_name, resource_key) do
+    case :ets.lookup(@last_applied_table, {repo_name, resource_key}) do
+      [{{^repo_name, ^resource_key}, manifest, _timestamp}] -> {:ok, manifest}
+      [] -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Lists all last-applied manifests for a repository.
+
+  Returns a list of `{resource_key, manifest}` tuples.
+  """
+  @spec list_last_applied(String.t()) :: [{String.t(), map()}]
+  def list_last_applied(repo_name) do
+    @last_applied_table
+    |> :ets.match({{repo_name, :"$1"}, :"$2", :_})
+    |> Enum.map(fn [key, manifest] -> {key, manifest} end)
+  end
+
+  @doc """
+  Clears all last-applied manifests for a repository.
+  """
+  @spec clear_last_applied(String.t()) :: :ok
+  def clear_last_applied(repo_name) do
+    @last_applied_table
+    |> :ets.match({{repo_name, :"$1"}, :_, :_})
+    |> Enum.each(fn [key] ->
+      :ets.delete(@last_applied_table, {repo_name, key})
+    end)
+
+    :ok
+  end
+
+  @doc """
+  Deletes a specific last-applied manifest.
+  """
+  @spec delete_last_applied(String.t(), String.t()) :: :ok
+  def delete_last_applied(repo_name, resource_key) do
+    :ets.delete(@last_applied_table, {repo_name, resource_key})
+    :ok
+  end
+
   # Server Callbacks
 
   @impl true
@@ -138,8 +199,9 @@ defmodule Nopea.Cache do
     :ets.new(@commits_table, [:set, :public, :named_table])
     :ets.new(@resources_table, [:set, :public, :named_table])
     :ets.new(@sync_states_table, [:set, :public, :named_table])
+    :ets.new(@last_applied_table, [:set, :public, :named_table])
 
-    Logger.info("Cache started with ETS tables: commits, resources, sync_states")
+    Logger.info("Cache started with ETS tables: commits, resources, sync_states, last_applied")
 
     {:ok, %{}}
   end
