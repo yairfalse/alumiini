@@ -321,13 +321,15 @@ defmodule Nopea.WebhookTest do
       assert conn.status == 404
     end
 
-    test "health check returns 200" do
+    test "health check returns status" do
       conn = conn(:get, "/health")
 
       conn = Router.call(conn, Router.init([]))
 
-      assert conn.status == 200
-      assert conn.resp_body =~ "ok"
+      # Returns JSON with status field (may be healthy or unhealthy depending on process state)
+      body = Jason.decode!(conn.resp_body)
+      assert body["status"] in ["healthy", "unhealthy"]
+      assert is_map(body["checks"])
     end
 
     test "notifies Worker when webhook is received" do
@@ -364,4 +366,124 @@ defmodule Nopea.WebhookTest do
       Agent.stop(worker_pid)
     end
   end
+
+  describe "health and readiness probes" do
+    test "GET /health returns process health status" do
+      # Ensure processes are running
+      ensure_process_running(Nopea.Cache, {Nopea.Cache, []})
+      ensure_process_running(Nopea.ULID, {Nopea.ULID, []})
+
+      conn = conn(:get, "/health")
+      conn = Router.call(conn, Router.init([]))
+
+      assert conn.status == 200
+      body = Jason.decode!(conn.resp_body)
+
+      assert body["status"] == "healthy"
+      assert body["checks"]["cache"] == "up"
+      assert body["checks"]["ulid"] == "up"
+    end
+
+    test "GET /health returns 503 when critical process is down" do
+      # Ensure ULID is running but Cache is NOT
+      ensure_process_running(Nopea.ULID, {Nopea.ULID, []})
+      ensure_process_stopped(Nopea.Cache)
+
+      conn = conn(:get, "/health")
+      conn = Router.call(conn, Router.init([]))
+
+      assert conn.status == 503
+      body = Jason.decode!(conn.resp_body)
+
+      assert body["status"] == "unhealthy"
+      assert body["checks"]["cache"] == "down"
+      assert body["checks"]["ulid"] == "up"
+    end
+
+    test "GET /ready returns 200 when controller is watching" do
+      # Use a mock GenServer that responds to :get_state
+      {:ok, pid} = MockController.start_link(%{watch_ref: make_ref(), repos: %{}})
+
+      conn = conn(:get, "/ready")
+      conn = Router.call(conn, Router.init([]))
+
+      assert conn.status == 200
+      body = Jason.decode!(conn.resp_body)
+
+      assert body["ready"] == true
+      assert body["watching"] == true
+
+      GenServer.stop(pid)
+    end
+
+    test "GET /ready returns 503 when controller not watching" do
+      # Mock controller state without watch_ref
+      {:ok, pid} = MockController.start_link(%{watch_ref: nil, repos: %{}})
+
+      conn = conn(:get, "/ready")
+      conn = Router.call(conn, Router.init([]))
+
+      assert conn.status == 503
+      body = Jason.decode!(conn.resp_body)
+
+      assert body["ready"] == false
+      assert body["watching"] == false
+
+      GenServer.stop(pid)
+    end
+
+    test "GET /ready returns 503 when controller is not running" do
+      # Make sure no controller is running
+      if pid = Process.whereis(Nopea.Controller), do: GenServer.stop(pid)
+
+      conn = conn(:get, "/ready")
+      conn = Router.call(conn, Router.init([]))
+
+      assert conn.status == 503
+      body = Jason.decode!(conn.resp_body)
+
+      assert body["ready"] == false
+    end
+  end
+
+  # Helper to ensure a process is running
+  defp ensure_process_running(name, child_spec) do
+    case Process.whereis(name) do
+      nil -> start_supervised!(child_spec)
+      pid when is_pid(pid) -> pid
+    end
+  end
+
+  # Helper to ensure a process is stopped
+  defp ensure_process_stopped(name) do
+    case Process.whereis(name) do
+      nil ->
+        :ok
+
+      pid ->
+        ref = Process.monitor(pid)
+        GenServer.stop(pid, :normal, 100)
+
+        receive do
+          {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
+        after
+          200 -> :ok
+        end
+    end
+  end
+end
+
+# Mock GenServer that responds to :get_state
+defmodule MockController do
+  use GenServer
+
+  def start_link(state) do
+    GenServer.start_link(__MODULE__, state, name: Nopea.Controller)
+  end
+
+  @impl true
+  def init(state), do: {:ok, state}
+
+  @impl true
+  def handle_call(:get_state, _from, state), do: {:reply, state, state}
 end

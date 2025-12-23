@@ -5,7 +5,8 @@ defmodule Nopea.Webhook.Router do
   ## Endpoints
 
   - `POST /webhook/:repo` – Receive webhook from GitHub/GitLab
-  - `GET /health` – Health check endpoint
+  - `GET /health` – Liveness probe (checks if Cache/ULID processes are alive)
+  - `GET /ready` – Readiness probe (checks if Controller is watching CRDs)
 
   ## Configuration
 
@@ -75,9 +76,65 @@ defmodule Nopea.Webhook.Router do
     {:ok, body, conn}
   end
 
-  # Health check endpoint
+  # Liveness probe - checks if critical processes are alive
   get "/health" do
-    send_resp(conn, 200, Jason.encode!(%{status: "ok"}))
+    checks = %{
+      cache: check_process(Nopea.Cache),
+      ulid: check_process(Nopea.ULID)
+    }
+
+    all_healthy = Enum.all?(checks, fn {_k, v} -> v == "up" end)
+
+    status = if all_healthy, do: "healthy", else: "unhealthy"
+    http_status = if all_healthy, do: 200, else: 503
+
+    send_resp(conn, http_status, Jason.encode!(%{status: status, checks: checks}))
+  end
+
+  # Readiness probe - checks if we're ready to accept traffic
+  get "/ready" do
+    case check_controller_ready() do
+      {:ok, info} ->
+        send_resp(
+          conn,
+          200,
+          Jason.encode!(%{ready: true, watching: info.watching, repos: info.repo_count})
+        )
+
+      {:error, reason} ->
+        send_resp(conn, 503, Jason.encode!(%{ready: false, watching: false, reason: reason}))
+    end
+  end
+
+  defp check_process(name) do
+    case Process.whereis(name) do
+      nil -> "down"
+      pid when is_pid(pid) -> if Process.alive?(pid), do: "up", else: "down"
+    end
+  end
+
+  defp check_controller_ready do
+    case Process.whereis(Nopea.Controller) do
+      nil ->
+        {:error, "controller_not_running"}
+
+      pid ->
+        try do
+          # 2s timeout - K8s probes typically have 1-10s timeouts
+          state = GenServer.call(pid, :get_state, 2000)
+          # Controller returns Map.from_struct, so use map access
+          watching = state[:watch_ref] != nil
+          repo_count = map_size(state[:repos] || %{})
+
+          if watching do
+            {:ok, %{watching: true, repo_count: repo_count}}
+          else
+            {:error, "not_watching"}
+          end
+        catch
+          :exit, _ -> {:error, "controller_not_responding"}
+        end
+    end
   end
 
   # Valid repo name pattern: alphanumeric, hyphens, underscores, dots
