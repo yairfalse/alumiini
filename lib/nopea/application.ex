@@ -92,6 +92,9 @@ defmodule Nopea.Application do
         children
       end
 
+    # Webhook HTTP server (always enabled for health/readiness probes)
+    children = children ++ [Nopea.Webhook.Router]
+
     opts = [strategy: :one_for_one, name: Nopea.AppSupervisor]
     Supervisor.start_link(children, opts)
   end

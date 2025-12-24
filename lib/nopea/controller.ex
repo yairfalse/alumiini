@@ -143,7 +143,8 @@ defmodule Nopea.Controller do
     case K8s.watch_git_repositories(state.namespace) do
       {:ok, _stream} ->
         # The k8s library sends events to this process
-        {:ok, state}
+        # Set watch_ref to indicate we're actively watching (used by readiness probe)
+        {:ok, %{state | watch_ref: make_ref()}}
 
       {:error, reason} ->
         {:error, reason}
