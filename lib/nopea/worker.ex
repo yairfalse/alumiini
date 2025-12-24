@@ -294,21 +294,29 @@ defmodule Nopea.Worker do
         if Enum.empty?(to_apply) do
           {:ok, 0, 0}
         else
-          # Emit CDEvents for detected drift (with drift types)
-          emit_drift_events(state, to_apply)
+          # Filter out resources with break-glass annotation
+          {to_heal, skipped} = filter_for_healing(to_apply, config)
 
-          # Extract just the manifests for applying
-          manifests_to_apply = Enum.map(to_apply, fn {manifest, _type} -> manifest end)
+          # Emit CDEvents for ALL detected drift (including skipped)
+          emit_drift_events(state, to_apply, skipped)
 
-          # Re-apply drifted manifests
-          case K8s.apply_manifests(manifests_to_apply, config.target_namespace) do
-            {:ok, count} ->
-              # Update cache with new state
-              store_last_applied(config.name, manifests_to_apply)
-              {:ok, length(to_apply), count}
+          if Enum.empty?(to_heal) do
+            Logger.info("All #{length(to_apply)} drifted resources have healing suspended")
+            {:ok, length(to_apply), 0}
+          else
+            # Extract just the manifests for applying
+            manifests_to_apply = Enum.map(to_heal, fn {manifest, _type, _live} -> manifest end)
 
-            {:error, _} = error ->
-              error
+            # Re-apply drifted manifests
+            case K8s.apply_manifests(manifests_to_apply, config.target_namespace) do
+              {:ok, count} ->
+                # Update cache with new state
+                store_last_applied(config.name, manifests_to_apply)
+                {:ok, length(to_heal), count}
+
+              {:error, _} = error ->
+                error
+            end
           end
         end
       end
@@ -316,34 +324,35 @@ defmodule Nopea.Worker do
   end
 
   # Detect which manifests have drifted using full three-way comparison
-  # Returns {to_apply, unchanged} where to_apply is [{manifest, drift_type}, ...]
+  # Returns {to_apply, unchanged} where to_apply is [{manifest, drift_type, live}, ...]
+  # The live resource is included for break-glass annotation checking
   defp detect_drifted_manifests(repo_name, manifests) do
     if not Cache.available?() do
-      # No cache - treat all as needing apply (new resources)
-      to_apply = Enum.map(manifests, &{&1, :new_resource})
+      # No cache - treat all as needing apply (new resources, no live)
+      to_apply = Enum.map(manifests, &{&1, :new_resource, nil})
       {to_apply, []}
     else
       {to_apply, unchanged} =
         Enum.reduce(manifests, {[], []}, fn manifest, {apply_acc, unchanged_acc} ->
-          case Drift.check_manifest_drift(repo_name, manifest) do
-            :no_drift ->
+          case Drift.check_manifest_drift_with_live(repo_name, manifest) do
+            {:no_drift, _live} ->
               {apply_acc, [manifest | unchanged_acc]}
 
-            :new_resource ->
-              {[{manifest, :new_resource} | apply_acc], unchanged_acc}
+            {:new_resource, nil} ->
+              {[{manifest, :new_resource, nil} | apply_acc], unchanged_acc}
 
-            :needs_apply ->
-              {[{manifest, :needs_apply} | apply_acc], unchanged_acc}
+            {:needs_apply, live} ->
+              {[{manifest, :needs_apply, live} | apply_acc], unchanged_acc}
 
-            {:git_change, _diff} ->
-              {[{manifest, :git_change} | apply_acc], unchanged_acc}
+            {{:git_change, _diff}, live} ->
+              {[{manifest, :git_change, live} | apply_acc], unchanged_acc}
 
-            {:manual_drift, _diff} ->
-              {[{manifest, :manual_drift} | apply_acc], unchanged_acc}
+            {{:manual_drift, _diff}, live} ->
+              {[{manifest, :manual_drift, live} | apply_acc], unchanged_acc}
 
-            {:conflict, _diff} ->
+            {{:conflict, _diff}, live} ->
               # On conflict, git wins (desired state takes precedence)
-              {[{manifest, :conflict} | apply_acc], unchanged_acc}
+              {[{manifest, :conflict, live} | apply_acc], unchanged_acc}
           end
         end)
 
@@ -351,12 +360,45 @@ defmodule Nopea.Worker do
     end
   end
 
-  # Emit CDEvents for drifted resources with their drift types
-  defp emit_drift_events(state, to_apply) do
-    config = state.config
+  # Filter drifted manifests based on break-glass annotations
+  # Returns {to_heal, skipped} where each is [{manifest, drift_type, live}, ...]
+  defp filter_for_healing(to_apply, _config) do
+    Enum.split_with(to_apply, fn {_manifest, drift_type, live} ->
+      case drift_type do
+        # Always heal git changes and new resources - git is source of truth
+        :git_change ->
+          true
 
-    Enum.each(to_apply, fn {manifest, drift_type} ->
+        :new_resource ->
+          true
+
+        :needs_apply ->
+          true
+
+        # For manual drift, check break-glass annotation
+        :manual_drift ->
+          not healing_suspended?(live)
+
+        # Conflict: git wins, but check annotation
+        :conflict ->
+          not healing_suspended?(live)
+      end
+    end)
+  end
+
+  # Check if a live resource has the break-glass annotation
+  defp healing_suspended?(nil), do: false
+  defp healing_suspended?(live), do: Drift.healing_suspended?(live)
+
+  # Emit CDEvents for drifted resources with their drift types
+  # skipped contains resources that have healing suspended
+  defp emit_drift_events(state, to_apply, skipped) do
+    config = state.config
+    skipped_keys = MapSet.new(skipped, fn {m, _, _} -> Applier.resource_key(m) end)
+
+    Enum.each(to_apply, fn {manifest, drift_type, _live} ->
       resource_key = Applier.resource_key(manifest)
+      action = if MapSet.member?(skipped_keys, resource_key), do: :skipped, else: :healed
 
       event =
         Events.drift_detected(config.name, %{
@@ -364,7 +406,7 @@ defmodule Nopea.Worker do
           drift_type: drift_type,
           namespace: config.target_namespace,
           commit: state.last_commit,
-          action: :healed
+          action: action
         })
 
       maybe_emit(event)

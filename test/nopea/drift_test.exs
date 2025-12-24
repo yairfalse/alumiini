@@ -388,4 +388,91 @@ defmodule Nopea.DriftTest do
       assert hash1 == hash2
     end
   end
+
+  describe "healing_suspended?/1" do
+    test "returns false when no annotations" do
+      resource = %{
+        "apiVersion" => "v1",
+        "kind" => "ConfigMap",
+        "metadata" => %{"name" => "my-config"}
+      }
+
+      refute Drift.healing_suspended?(resource)
+    end
+
+    test "returns false when annotations exist but no suspend annotation" do
+      resource = %{
+        "apiVersion" => "v1",
+        "kind" => "ConfigMap",
+        "metadata" => %{
+          "name" => "my-config",
+          "annotations" => %{
+            "app.kubernetes.io/managed-by" => "nopea"
+          }
+        }
+      }
+
+      refute Drift.healing_suspended?(resource)
+    end
+
+    test "returns true when nopea.io/suspend-heal is 'true'" do
+      resource = %{
+        "apiVersion" => "apps/v1",
+        "kind" => "Deployment",
+        "metadata" => %{
+          "name" => "api",
+          "annotations" => %{
+            "nopea.io/suspend-heal" => "true"
+          }
+        }
+      }
+
+      assert Drift.healing_suspended?(resource)
+    end
+
+    test "returns true when nopea.io/suspend-heal is '1'" do
+      resource = %{
+        "metadata" => %{
+          "name" => "api",
+          "annotations" => %{
+            "nopea.io/suspend-heal" => "1"
+          }
+        }
+      }
+
+      assert Drift.healing_suspended?(resource)
+    end
+
+    test "returns true when nopea.io/suspend-heal is 'yes'" do
+      resource = %{
+        "metadata" => %{
+          "name" => "api",
+          "annotations" => %{
+            "nopea.io/suspend-heal" => "yes"
+          }
+        }
+      }
+
+      assert Drift.healing_suspended?(resource)
+    end
+
+    test "returns false for invalid suspend-heal values" do
+      resource = %{
+        "metadata" => %{
+          "name" => "api",
+          "annotations" => %{
+            "nopea.io/suspend-heal" => "false"
+          }
+        }
+      }
+
+      refute Drift.healing_suspended?(resource)
+    end
+
+    test "handles nil metadata gracefully" do
+      resource = %{"apiVersion" => "v1", "kind" => "ConfigMap"}
+
+      refute Drift.healing_suspended?(resource)
+    end
+  end
 end

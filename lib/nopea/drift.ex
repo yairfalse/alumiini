@@ -219,6 +219,62 @@ defmodule Nopea.Drift do
   end
 
   @doc """
+  Checks a manifest for drift and returns the live resource.
+
+  Same as `check_manifest_drift/3` but returns a tuple `{result, live}` where
+  `live` is the actual resource from the K8s cluster (or nil if not found).
+
+  This is useful when you need to inspect the live resource for additional
+  filtering (e.g., checking break-glass annotations).
+
+  ## Returns
+
+  - `{:no_drift, live}` - All states match
+  - `{{:git_change, diff}, live}` - Git has changed
+  - `{{:manual_drift, diff}, live}` - Cluster was manually modified
+  - `{{:conflict, diff}, live}` - Both changed
+  - `{:new_resource, nil}` - Resource doesn't exist in cluster
+  - `{:needs_apply, live}` - Resource exists but not in cache
+  """
+  @spec check_manifest_drift_with_live(String.t(), map(), keyword()) ::
+          {diff_result() | :new_resource | :needs_apply, map() | nil}
+  def check_manifest_drift_with_live(repo_name, manifest, opts \\ []) do
+    k8s_module = Keyword.get(opts, :k8s_module, Nopea.K8s)
+    cache_module = Keyword.get(opts, :cache_module, Nopea.Cache)
+
+    resource_key = Nopea.Applier.resource_key(manifest)
+    api_version = Map.fetch!(manifest, "apiVersion")
+    kind = Map.fetch!(manifest, "kind")
+    name = get_in(manifest, ["metadata", "name"])
+    namespace = get_in(manifest, ["metadata", "namespace"]) || "default"
+
+    # Get last_applied from cache
+    last_applied_result = cache_module.get_last_applied(repo_name, resource_key)
+
+    # Get live state from cluster
+    live_result = k8s_module.get_resource(api_version, kind, name, namespace)
+
+    case {last_applied_result, live_result} do
+      # No cache, no cluster -> new resource
+      {{:error, :not_found}, {:error, _}} ->
+        {:new_resource, nil}
+
+      # No cache, but exists in cluster -> needs apply to establish baseline
+      {{:error, :not_found}, {:ok, live}} ->
+        {:needs_apply, live}
+
+      # Has cache, no cluster -> resource was deleted, treat as new
+      {{:ok, _last}, {:error, _}} ->
+        {:new_resource, nil}
+
+      # Both exist -> do three-way diff
+      {{:ok, last_applied}, {:ok, live}} ->
+        drift_result = detect_drift_with_cluster(last_applied, manifest, live)
+        {drift_result, live}
+    end
+  end
+
+  @doc """
   Computes a normalized hash of a manifest for drift detection.
 
   The manifest is normalized before hashing, so K8s-added fields
@@ -229,6 +285,39 @@ defmodule Nopea.Drift do
     normalized = normalize(manifest)
     {:ok, "sha256:#{do_hash(normalized)}"}
   end
+
+  @suspend_heal_annotation "nopea.io/suspend-heal"
+  @truthy_values ["true", "1", "yes"]
+
+  @doc """
+  Checks if a resource has the break-glass annotation that suspends healing.
+
+  Returns `true` if the resource has the `nopea.io/suspend-heal` annotation
+  set to a truthy value ("true", "1", or "yes"), indicating that NOPEA
+  should NOT heal drift on this resource.
+
+  This is the "break-glass" escape hatch for emergencies - ops can add this
+  annotation with their kubectl hotfix to prevent NOPEA from reverting it.
+
+  ## Examples
+
+      # Joakim's emergency hotfix
+      kubectl annotate deploy/api nopea.io/suspend-heal=true
+      kubectl set image deploy/api image=hotfix-v1
+
+      # Later, remove the annotation to resume GitOps healing
+      kubectl annotate deploy/api nopea.io/suspend-heal-
+
+  """
+  @spec healing_suspended?(map()) :: boolean()
+  def healing_suspended?(resource) when is_map(resource) do
+    resource
+    |> get_in(["metadata", "annotations", @suspend_heal_annotation])
+    |> truthy?()
+  end
+
+  defp truthy?(value) when value in @truthy_values, do: true
+  defp truthy?(_), do: false
 
   # Private functions
 
