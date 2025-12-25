@@ -6,6 +6,13 @@ defmodule Nopea.Controller do
   - ADDED: Starts a new Worker
   - MODIFIED: Updates Worker if needed
   - DELETED: Stops the Worker
+
+  ## Standby Mode
+
+  When leader election is enabled, the controller starts in standby mode.
+  It waits for `{:leader, true}` message from LeaderElection before
+  starting to watch CRDs. On `{:leader, false}`, it stops all workers
+  and returns to standby.
   """
 
   use GenServer
@@ -20,7 +27,8 @@ defmodule Nopea.Controller do
     :namespace,
     :watch_ref,
     :resource_version,
-    repos: %{}
+    repos: %{},
+    standby: false
   ]
 
   # Client API
@@ -42,16 +50,22 @@ defmodule Nopea.Controller do
   @impl true
   def init(opts) do
     namespace = Keyword.get(opts, :namespace, @default_namespace)
+    standby = Keyword.get(opts, :standby, false)
 
-    Logger.info("Controller starting, watching namespace: #{namespace}")
+    Logger.info(
+      "Controller starting, watching namespace: #{namespace}, standby: #{standby}"
+    )
 
     state = %__MODULE__{
       namespace: namespace,
-      repos: %{}
+      repos: %{},
+      standby: standby
     }
 
-    # Start watching after init completes
-    send(self(), :start_watch)
+    # Only start watching if not in standby mode
+    unless standby do
+      send(self(), :start_watch)
+    end
 
     {:ok, state}
   end
@@ -111,6 +125,31 @@ defmodule Nopea.Controller do
     Logger.info("Watch stream ended, reconnecting...")
     schedule_reconnect()
     {:noreply, %{state | watch_ref: nil}}
+  end
+
+  # Leadership messages from LeaderElection
+
+  @impl true
+  def handle_info({:leader, true}, state) do
+    Logger.info("Became leader, starting CRD watch")
+    send(self(), :start_watch)
+    {:noreply, %{state | standby: false}}
+  end
+
+  @impl true
+  def handle_info({:leader, false}, state) do
+    Logger.info("Lost leadership, stopping all workers and entering standby")
+
+    # Stop all workers
+    Enum.each(state.repos, fn {name, _version} ->
+      case Supervisor.stop_worker(name) do
+        :ok -> Logger.debug("Stopped worker: #{name}")
+        {:error, reason} -> Logger.warning("Failed to stop worker #{name}: #{inspect(reason)}")
+      end
+    end)
+
+    # Clear state and enter standby
+    {:noreply, %{state | standby: true, watch_ref: nil, repos: %{}}}
   end
 
   # Private functions

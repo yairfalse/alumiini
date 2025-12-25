@@ -1,0 +1,85 @@
+# NOPEA Helm Chart Values
+
+# Namespace to install into
+namespace: nopea-system
+
+# Image configuration
+image:
+  repository: nopea
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Replicas for HA (leader election handles active controller)
+replicas: 1
+
+# Watch configuration
+# Empty string = watch all namespaces
+watchNamespace: ""
+
+# HTTP server configuration
+http:
+  port: 4000
+
+# Leader election for HA deployments
+leaderElection:
+  enabled: false
+  leaseName: nopea-leader-election
+  leaseDuration: 15   # seconds
+  renewDeadline: 10   # seconds
+  retryPeriod: 2      # seconds
+
+# CDEvents endpoint (optional)
+# Set to enable CDEvents emission to observability platform
+cdeventsEndpoint: ""
+
+# Webhook secret for GitHub/GitLab webhook verification
+webhook:
+  # Use existing secret instead of creating one
+  existingSecret: ""
+  # Key in the secret containing the webhook secret
+  secretKey: "webhook-secret"
+  # If existingSecret is empty and this is set, create a secret
+  secret: ""
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+# Service account
+serviceAccount:
+  create: true
+  name: nopea-controller
+  annotations: {}
+
+# SSH keys for private repos (optional)
+sshKeys:
+  # Name of existing secret with SSH keys
+  existingSecret: ""
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}

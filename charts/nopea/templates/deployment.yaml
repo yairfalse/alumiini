@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nopea.fullname" . }}-controller
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "nopea.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "nopea.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nopea.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "nopea.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: controller
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.http.port }}
+              protocol: TCP
+          env:
+            - name: WATCH_NAMESPACE
+              value: "{{ .Values.watchNamespace }}"
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NOPEA_HTTP_PORT
+              value: "{{ .Values.http.port }}"
+            # Leader election
+            - name: NOPEA_ENABLE_LEADER_ELECTION
+              value: "{{ .Values.leaderElection.enabled }}"
+            {{- if .Values.leaderElection.enabled }}
+            - name: NOPEA_LEADER_LEASE_NAME
+              value: "{{ .Values.leaderElection.leaseName }}"
+            - name: NOPEA_LEADER_LEASE_DURATION
+              value: "{{ .Values.leaderElection.leaseDuration }}"
+            - name: NOPEA_LEADER_RENEW_DEADLINE
+              value: "{{ .Values.leaderElection.renewDeadline }}"
+            - name: NOPEA_LEADER_RETRY_PERIOD
+              value: "{{ .Values.leaderElection.retryPeriod }}"
+            {{- end }}
+            # CDEvents
+            {{- if .Values.cdeventsEndpoint }}
+            - name: NOPEA_CDEVENTS_ENDPOINT
+              value: "{{ .Values.cdeventsEndpoint }}"
+            {{- end }}
+            # Webhook secret
+            {{- if or .Values.webhook.existingSecret .Values.webhook.secret }}
+            - name: NOPEA_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.webhook.existingSecret }}
+                  name: {{ .Values.webhook.existingSecret }}
+                  {{- else }}
+                  name: {{ include "nopea.fullname" . }}-webhook
+                  {{- end }}
+                  key: {{ .Values.webhook.secretKey }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: repos
+              mountPath: /tmp/nopea/repos
+            {{- if .Values.sshKeys.existingSecret }}
+            - name: ssh-keys
+              mountPath: /root/.ssh
+              readOnly: true
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: repos
+          emptyDir: {}
+        {{- if .Values.sshKeys.existingSecret }}
+        - name: ssh-keys
+          secret:
+            secretName: {{ .Values.sshKeys.existingSecret }}
+            defaultMode: 0600
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

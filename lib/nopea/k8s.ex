@@ -19,6 +19,7 @@ defmodule Nopea.K8s do
   Returns a K8s connection.
   Automatically detects in-cluster vs local kubeconfig.
   """
+  @impl true
   @spec conn() :: {:ok, K8s.Conn.t()} | {:error, term()}
   def conn do
     case Application.get_env(:nopea, :k8s_conn) do
@@ -214,6 +215,7 @@ defmodule Nopea.K8s do
   @doc """
   Gets a resource from the cluster.
   """
+  @impl true
   @spec get_resource(String.t(), String.t(), String.t(), String.t()) ::
           {:ok, map()} | {:error, term()}
   def get_resource(api_version, kind, name, namespace) do

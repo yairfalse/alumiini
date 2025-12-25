@@ -114,6 +114,40 @@ defmodule Nopea.Webhook.Router do
   end
 
   defp check_controller_ready do
+    leader_election_enabled = Application.get_env(:nopea, :enable_leader_election, false)
+
+    # If leader election is enabled, check if we're the leader first
+    if leader_election_enabled do
+      case check_leader_status() do
+        {:ok, :leader} ->
+          check_controller_watching()
+
+        {:ok, :not_leader} ->
+          {:error, "not_leader"}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      check_controller_watching()
+    end
+  end
+
+  defp check_leader_status do
+    case Process.whereis(Nopea.LeaderElection) do
+      nil ->
+        {:error, "leader_election_not_running"}
+
+      _pid ->
+        if Nopea.LeaderElection.is_leader?() do
+          {:ok, :leader}
+        else
+          {:ok, :not_leader}
+        end
+    end
+  end
+
+  defp check_controller_watching do
     case Process.whereis(Nopea.Controller) do
       nil ->
         {:error, "controller_not_running"}
