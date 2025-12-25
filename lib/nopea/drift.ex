@@ -301,11 +301,11 @@ defmodule Nopea.Drift do
 
   ## Examples
 
-      # Joakim's emergency hotfix
+      # Emergency hotfix - protect from NOPEA
       kubectl annotate deploy/api nopea.io/suspend-heal=true
       kubectl set image deploy/api image=hotfix-v1
 
-      # Later, remove the annotation to resume GitOps healing
+      # Later, remove annotation to resume GitOps
       kubectl annotate deploy/api nopea.io/suspend-heal-
 
   """

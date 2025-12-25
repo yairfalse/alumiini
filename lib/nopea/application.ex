@@ -10,6 +10,7 @@ defmodule Nopea.Application do
   - Nopea.Git (Rust Port GenServer)
   - Nopea.Supervisor (DynamicSupervisor for Workers)
   - Nopea.Controller (CRD watcher, optional)
+  - Nopea.Webhook.Router (HTTP server for webhooks and health probes, always enabled)
 
   ## Configuration
 

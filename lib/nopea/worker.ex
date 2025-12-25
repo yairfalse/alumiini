@@ -350,6 +350,9 @@ defmodule Nopea.Worker do
         Enum.reduce(manifests, {[], []}, fn manifest, {apply_acc, unchanged_acc} ->
           case Drift.check_manifest_drift_with_live(repo_name, manifest) do
             {:no_drift, _live} ->
+              # Drift resolved - clear any grace period timestamp
+              resource_key = Applier.resource_key(manifest)
+              clear_drift_timestamp(repo_name, resource_key)
               {apply_acc, [manifest | unchanged_acc]}
 
             {:new_resource, nil} ->
