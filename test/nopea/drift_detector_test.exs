@@ -6,7 +6,7 @@ defmodule Nopea.DriftDetectorTest do
   is detected when comparing last_applied, desired (git), and live (cluster) states.
   """
 
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import Mox
 

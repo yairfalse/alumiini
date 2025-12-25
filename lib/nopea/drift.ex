@@ -309,7 +309,9 @@ defmodule Nopea.Drift do
       kubectl annotate deploy/api nopea.io/suspend-heal-
 
   """
-  @spec healing_suspended?(map()) :: boolean()
+  @spec healing_suspended?(map() | nil) :: boolean()
+  def healing_suspended?(nil), do: false
+
   def healing_suspended?(resource) when is_map(resource) do
     resource
     |> get_in(["metadata", "annotations", @suspend_heal_annotation])
