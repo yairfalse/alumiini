@@ -212,18 +212,23 @@ spec:
 
 ### Break-Glass Annotation
 
-For emergencies, skip healing on specific resources:
+For emergencies, protect a resource from ALL changes (including git):
 
 ```bash
-# Joakim's 3 AM hotfix
+# Larry's 3 AM hotfix
 kubectl annotate deploy/api nopea.io/suspend-heal=true
 kubectl set image deploy/api image=hotfix-v1
 
-# NOPEA will detect drift but skip healing this resource
+# NOPEA will skip this resource entirely:
+# - Won't revert to git state
+# - Won't apply git changes (even if someone pushes broken config)
+# - Will emit warning events
 
 # Later, remove annotation to resume GitOps
 kubectl annotate deploy/api nopea.io/suspend-heal-
 ```
+
+**Important**: The annotation protects against both manual drift healing AND git changes. This prevents a bad git push at 05:00 from destroying Larry's 03:00 hotfix.
 
 ---
 

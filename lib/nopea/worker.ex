@@ -385,16 +385,23 @@ defmodule Nopea.Worker do
       resource_key = Applier.resource_key(manifest)
 
       case drift_type do
-        # Always heal git changes and new resources - git is source of truth
-        :git_change ->
-          clear_drift_timestamp(repo_name, resource_key)
-          true
-
+        # New resources always apply (nothing to protect)
         :new_resource ->
           true
 
         :needs_apply ->
           true
+
+        # Git changes: apply unless break-glass annotation
+        # (Larry's hotfix should be protected even from bad git pushes)
+        :git_change ->
+          if healing_suspended?(live) do
+            Logger.warning("Git change blocked by suspend-heal annotation: #{resource_key}")
+            false
+          else
+            clear_drift_timestamp(repo_name, resource_key)
+            true
+          end
 
         # For manual drift, check policy, grace period, and break-glass annotation
         :manual_drift ->
