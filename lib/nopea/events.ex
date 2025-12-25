@@ -225,7 +225,10 @@ defmodule Nopea.Events do
     - `:drift_type` (required) - Type of drift (:git_change, :manual_drift, :conflict)
     - `:namespace` - Target namespace (default: "default")
     - `:commit` - Current commit SHA
-    - `:action` - Action taken (:healed, :reported)
+    - `:action` - Action taken:
+      - `:healed` - Drift was corrected by applying desired state
+      - `:skipped` - Healing skipped (break-glass annotation or policy)
+      - `:reported` - Drift detected but not healed (manual policy)
 
   ## Example
 

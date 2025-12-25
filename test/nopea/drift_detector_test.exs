@@ -6,7 +6,7 @@ defmodule Nopea.DriftDetectorTest do
   is detected when comparing last_applied, desired (git), and live (cluster) states.
   """
 
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import Mox
 
@@ -141,6 +141,65 @@ defmodule Nopea.DriftDetectorTest do
       # Resource exists in cluster but we don't have last_applied
       # Treat as needing apply to establish baseline
       assert result == :needs_apply
+    end
+  end
+
+  describe "check_manifest_drift_with_live/3" do
+    test "returns live resource alongside drift result" do
+      repo_name = "test-repo-#{:rand.uniform(1000)}"
+      resource_key = "Deployment/default/my-app"
+
+      # Set up last_applied in cache
+      last_applied = deployment_manifest("my-app", replicas: 3)
+      Cache.put_last_applied(repo_name, resource_key, Drift.normalize(last_applied))
+
+      # Desired is same as last_applied (no git change)
+      desired = deployment_manifest("my-app", replicas: 3)
+
+      # Mock K8s to return live state with manual change
+      live =
+        deployment_manifest("my-app", replicas: 5)
+        |> put_in(["metadata", "resourceVersion"], "99999")
+
+      Nopea.K8sMock
+      |> expect(:get_resource, fn "apps/v1", "Deployment", "my-app", "default" ->
+        {:ok, live}
+      end)
+
+      result = Drift.check_manifest_drift_with_live(repo_name, desired, k8s_module: Nopea.K8sMock)
+
+      # Returns {drift_result, live_resource}
+      assert {{:manual_drift, _diff}, ^live} = result
+    end
+
+    test "returns nil live for new resources" do
+      repo_name = "test-repo-#{:rand.uniform(1000)}"
+      desired = deployment_manifest("my-app", replicas: 3)
+
+      Nopea.K8sMock
+      |> expect(:get_resource, fn "apps/v1", "Deployment", "my-app", "default" ->
+        {:error, :not_found}
+      end)
+
+      result = Drift.check_manifest_drift_with_live(repo_name, desired, k8s_module: Nopea.K8sMock)
+
+      assert {:new_resource, nil} = result
+    end
+
+    test "returns live for needs_apply case" do
+      repo_name = "test-repo-#{:rand.uniform(1000)}"
+      desired = deployment_manifest("my-app", replicas: 3)
+
+      live = deployment_manifest("my-app", replicas: 3)
+
+      Nopea.K8sMock
+      |> expect(:get_resource, fn "apps/v1", "Deployment", "my-app", "default" ->
+        {:ok, live}
+      end)
+
+      result = Drift.check_manifest_drift_with_live(repo_name, desired, k8s_module: Nopea.K8sMock)
+
+      assert {:needs_apply, ^live} = result
     end
   end
 

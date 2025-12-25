@@ -267,46 +267,29 @@ defmodule Nopea.Webhook.Router do
   Returns a child_spec that can be used to start the webhook router
   under a supervisor, typically from Nopea.Application.
 
-  The webhook server can be enabled/disabled and configured with a port
-  via environment variables:
+  The HTTP server is always started (required for health/readiness probes).
+  Port is configurable via environment variable:
 
-  * NOPEA_WEBHOOK_ENABLED=true|false (defaults to false)
-  * NOPEA_WEBHOOK_PORT=port_number   (defaults to 4001)
+  * NOPEA_HTTP_PORT=port_number (defaults to 4000)
   """
   @spec child_spec(term()) :: Supervisor.child_spec()
   def child_spec(_opts) do
-    if webhook_enabled?() do
-      Plug.Cowboy.child_spec(
-        scheme: :http,
-        plug: __MODULE__,
-        options: [port: webhook_port()]
-      )
-    else
-      # No-op child spec when webhook server is disabled.
-      %{
-        id: __MODULE__,
-        start: {Task, :start_link, [fn -> :ok end]},
-        type: :worker
-      }
-    end
+    Plug.Cowboy.child_spec(
+      scheme: :http,
+      plug: __MODULE__,
+      options: [port: http_port()]
+    )
   end
 
-  defp webhook_enabled? do
-    case System.get_env("NOPEA_WEBHOOK_ENABLED") do
-      nil -> false
-      value -> String.downcase(value) in ["1", "true", "yes"]
-    end
-  end
-
-  defp webhook_port do
-    case System.get_env("NOPEA_WEBHOOK_PORT") do
+  defp http_port do
+    case System.get_env("NOPEA_HTTP_PORT") do
       nil ->
-        4001
+        4000
 
       value ->
         case Integer.parse(value) do
           {port, ""} when port > 0 and port < 65_536 -> port
-          _ -> 4001
+          _ -> 4000
         end
     end
   end

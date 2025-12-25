@@ -10,6 +10,7 @@ defmodule Nopea.Application do
   - Nopea.Git (Rust Port GenServer)
   - Nopea.Supervisor (DynamicSupervisor for Workers)
   - Nopea.Controller (CRD watcher, optional)
+  - Nopea.Webhook.Router (HTTP server for webhooks and health probes, always enabled)
 
   ## Configuration
 
@@ -91,6 +92,9 @@ defmodule Nopea.Application do
       else
         children
       end
+
+    # Webhook HTTP server (always enabled for health/readiness probes)
+    children = children ++ [Nopea.Webhook.Router]
 
     opts = [strategy: :one_for_one, name: Nopea.AppSupervisor]
     Supervisor.start_link(children, opts)

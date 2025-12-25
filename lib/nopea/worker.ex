@@ -277,6 +277,18 @@ defmodule Nopea.Worker do
   # Reconcile with drift detection - only re-apply changed resources
   defp reconcile_with_drift_detection(state) do
     config = state.config
+
+    # Check if repository is suspended
+    if config[:suspend] do
+      Logger.debug("Repository #{config.name} is suspended, skipping reconcile")
+      {:ok, 0, 0}
+    else
+      do_reconcile(state)
+    end
+  end
+
+  defp do_reconcile(state) do
+    config = state.config
     repo_path = repo_path(config.name)
 
     if not File.exists?(repo_path) do
@@ -285,7 +297,7 @@ defmodule Nopea.Worker do
       with {:ok, files} <- list_manifest_files(repo_path, config.path),
            {:ok, manifests} <- read_and_parse_manifests(repo_path, config.path, files) do
         # Check each manifest for drift (returns {to_apply, unchanged})
-        # where to_apply is [{manifest, drift_type}, ...]
+        # where to_apply is [{manifest, drift_type, live}, ...]
         {to_apply, _unchanged} = detect_drifted_manifests(config.name, manifests)
 
         Logger.debug("Drift detection for #{config.name}: #{length(to_apply)} need apply")
@@ -294,21 +306,31 @@ defmodule Nopea.Worker do
         if Enum.empty?(to_apply) do
           {:ok, 0, 0}
         else
-          # Emit CDEvents for detected drift (with drift types)
-          emit_drift_events(state, to_apply)
+          # Filter out resources with break-glass annotation and heal_policy
+          {to_heal, skipped} = filter_for_healing(to_apply, config)
 
-          # Extract just the manifests for applying
-          manifests_to_apply = Enum.map(to_apply, fn {manifest, _type} -> manifest end)
+          # Emit CDEvents for ALL detected drift (including skipped)
+          emit_drift_events(state, to_apply, skipped)
 
-          # Re-apply drifted manifests
-          case K8s.apply_manifests(manifests_to_apply, config.target_namespace) do
-            {:ok, count} ->
-              # Update cache with new state
-              store_last_applied(config.name, manifests_to_apply)
-              {:ok, length(to_apply), count}
+          if Enum.empty?(to_heal) do
+            Logger.info("All #{length(to_apply)} drifted resources have healing suspended")
+            {:ok, length(to_apply), 0}
+          else
+            # Extract just the manifests for applying
+            manifests_to_apply = Enum.map(to_heal, fn {manifest, _type, _live} -> manifest end)
 
-            {:error, _} = error ->
-              error
+            # Re-apply drifted manifests
+            case K8s.apply_manifests(manifests_to_apply, config.target_namespace) do
+              {:ok, count} ->
+                # Update cache with new state
+                store_last_applied(config.name, manifests_to_apply)
+                # Clear drift timestamps for healed resources
+                clear_healed_drift_timestamps(config.name, to_heal)
+                {:ok, length(to_heal), count}
+
+              {:error, _} = error ->
+                error
+            end
           end
         end
       end
@@ -316,34 +338,38 @@ defmodule Nopea.Worker do
   end
 
   # Detect which manifests have drifted using full three-way comparison
-  # Returns {to_apply, unchanged} where to_apply is [{manifest, drift_type}, ...]
+  # Returns {to_apply, unchanged} where to_apply is [{manifest, drift_type, live}, ...]
+  # The live resource is included for break-glass annotation checking
   defp detect_drifted_manifests(repo_name, manifests) do
     if not Cache.available?() do
-      # No cache - treat all as needing apply (new resources)
-      to_apply = Enum.map(manifests, &{&1, :new_resource})
+      # No cache - treat all as needing apply (new resources, no live)
+      to_apply = Enum.map(manifests, &{&1, :new_resource, nil})
       {to_apply, []}
     else
       {to_apply, unchanged} =
         Enum.reduce(manifests, {[], []}, fn manifest, {apply_acc, unchanged_acc} ->
-          case Drift.check_manifest_drift(repo_name, manifest) do
-            :no_drift ->
+          case Drift.check_manifest_drift_with_live(repo_name, manifest) do
+            {:no_drift, _live} ->
+              # Drift resolved - clear any grace period timestamp
+              resource_key = Applier.resource_key(manifest)
+              clear_drift_timestamp(repo_name, resource_key)
               {apply_acc, [manifest | unchanged_acc]}
 
-            :new_resource ->
-              {[{manifest, :new_resource} | apply_acc], unchanged_acc}
+            {:new_resource, nil} ->
+              {[{manifest, :new_resource, nil} | apply_acc], unchanged_acc}
 
-            :needs_apply ->
-              {[{manifest, :needs_apply} | apply_acc], unchanged_acc}
+            {:needs_apply, live} ->
+              {[{manifest, :needs_apply, live} | apply_acc], unchanged_acc}
 
-            {:git_change, _diff} ->
-              {[{manifest, :git_change} | apply_acc], unchanged_acc}
+            {{:git_change, _diff}, live} ->
+              {[{manifest, :git_change, live} | apply_acc], unchanged_acc}
 
-            {:manual_drift, _diff} ->
-              {[{manifest, :manual_drift} | apply_acc], unchanged_acc}
+            {{:manual_drift, _diff}, live} ->
+              {[{manifest, :manual_drift, live} | apply_acc], unchanged_acc}
 
-            {:conflict, _diff} ->
+            {{:conflict, _diff}, live} ->
               # On conflict, git wins (desired state takes precedence)
-              {[{manifest, :conflict} | apply_acc], unchanged_acc}
+              {[{manifest, :conflict, live} | apply_acc], unchanged_acc}
           end
         end)
 
@@ -351,12 +377,123 @@ defmodule Nopea.Worker do
     end
   end
 
-  # Emit CDEvents for drifted resources with their drift types
-  defp emit_drift_events(state, to_apply) do
-    config = state.config
+  # Filter drifted manifests based on heal_policy, grace period, and break-glass annotations
+  # Returns {to_heal, skipped} where each is [{manifest, drift_type, live}, ...]
+  defp filter_for_healing(to_apply, config) do
+    heal_policy = config[:heal_policy] || :auto
+    grace_period_ms = config[:heal_grace_period]
+    repo_name = config.name
 
-    Enum.each(to_apply, fn {manifest, drift_type} ->
+    Enum.split_with(to_apply, fn {manifest, drift_type, live} ->
       resource_key = Applier.resource_key(manifest)
+
+      case drift_type do
+        # New resources always apply (nothing to protect)
+        :new_resource ->
+          true
+
+        :needs_apply ->
+          true
+
+        # Git changes: apply unless break-glass annotation
+        # (Larry's hotfix should be protected even from bad git pushes)
+        :git_change ->
+          if healing_suspended?(live) do
+            Logger.warning("Git change blocked by suspend-heal annotation: #{resource_key}")
+            false
+          else
+            clear_drift_timestamp(repo_name, resource_key)
+            true
+          end
+
+        # For manual drift, check policy, grace period, and break-glass annotation
+        :manual_drift ->
+          should_heal_manual_drift?(heal_policy, grace_period_ms, repo_name, resource_key, live)
+
+        # Conflict: check policy, grace period, and annotation
+        :conflict ->
+          should_heal_manual_drift?(heal_policy, grace_period_ms, repo_name, resource_key, live)
+      end
+    end)
+  end
+
+  # Determine if manual drift should be healed based on policy, grace period, and annotation
+  defp should_heal_manual_drift?(heal_policy, grace_period_ms, repo_name, resource_key, live) do
+    case heal_policy do
+      :auto ->
+        # Check break-glass annotation first
+        if healing_suspended?(live) do
+          false
+        else
+          # Check grace period if configured
+          grace_period_elapsed?(grace_period_ms, repo_name, resource_key)
+        end
+
+      :manual ->
+        # Never auto-heal, operator must intervene
+        false
+
+      :notify ->
+        # Same as manual, but with webhook (future)
+        false
+    end
+  end
+
+  # Check if grace period has elapsed since drift was first detected
+  defp grace_period_elapsed?(nil, _repo_name, _resource_key) do
+    # No grace period configured, heal immediately
+    true
+  end
+
+  defp grace_period_elapsed?(grace_period_ms, repo_name, resource_key) do
+    if Cache.available?() do
+      first_seen = Cache.record_drift_first_seen(repo_name, resource_key)
+      elapsed_ms = DateTime.diff(DateTime.utc_now(), first_seen, :millisecond)
+
+      if elapsed_ms >= grace_period_ms do
+        Logger.info("Grace period elapsed for #{resource_key}, healing drift")
+        true
+      else
+        remaining_s = div(grace_period_ms - elapsed_ms, 1000)
+        Logger.debug("Grace period: #{remaining_s}s remaining for #{resource_key}")
+        false
+      end
+    else
+      # No cache, heal immediately
+      true
+    end
+  end
+
+  # Clear drift timestamp after healing or when drift resolves
+  defp clear_drift_timestamp(repo_name, resource_key) do
+    if Cache.available?() do
+      Cache.clear_drift_first_seen(repo_name, resource_key)
+    end
+  end
+
+  # Clear drift timestamps for all healed resources
+  defp clear_healed_drift_timestamps(repo_name, healed) do
+    if Cache.available?() do
+      Enum.each(healed, fn {manifest, _type, _live} ->
+        resource_key = Applier.resource_key(manifest)
+        Cache.clear_drift_first_seen(repo_name, resource_key)
+      end)
+    end
+  end
+
+  # Check if a live resource has the break-glass annotation
+  defp healing_suspended?(nil), do: false
+  defp healing_suspended?(live), do: Drift.healing_suspended?(live)
+
+  # Emit CDEvents for drifted resources with their drift types
+  # skipped contains resources that have healing suspended
+  defp emit_drift_events(state, to_apply, skipped) do
+    config = state.config
+    skipped_keys = MapSet.new(skipped, fn {m, _, _} -> Applier.resource_key(m) end)
+
+    Enum.each(to_apply, fn {manifest, drift_type, _live} ->
+      resource_key = Applier.resource_key(manifest)
+      action = if MapSet.member?(skipped_keys, resource_key), do: :skipped, else: :healed
 
       event =
         Events.drift_detected(config.name, %{
@@ -364,7 +501,7 @@ defmodule Nopea.Worker do
           drift_type: drift_type,
           namespace: config.target_namespace,
           commit: state.last_commit,
-          action: :healed
+          action: action
         })
 
       maybe_emit(event)

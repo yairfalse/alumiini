@@ -143,7 +143,8 @@ defmodule Nopea.Controller do
     case K8s.watch_git_repositories(state.namespace) do
       {:ok, _stream} ->
         # The k8s library sends events to this process
-        {:ok, state}
+        # Set watch_ref to indicate we're actively watching (used by readiness probe)
+        {:ok, %{state | watch_ref: make_ref()}}
 
       {:error, reason} ->
         {:error, reason}
@@ -246,7 +247,11 @@ defmodule Nopea.Controller do
       branch: Map.get(spec, "branch", "main"),
       path: Map.get(spec, "path"),
       target_namespace: Map.get(spec, "targetNamespace", namespace),
-      interval: parse_interval(Map.get(spec, "interval", "5m"))
+      interval: parse_interval(Map.get(spec, "interval", "5m")),
+      # Healing configuration
+      suspend: Map.get(spec, "suspend", false),
+      heal_policy: parse_heal_policy(Map.get(spec, "healPolicy", "auto")),
+      heal_grace_period: parse_interval(Map.get(spec, "healGracePeriod"))
     }
 
     # Validate required fields
@@ -293,7 +298,13 @@ defmodule Nopea.Controller do
   end
 
   defp parse_interval(interval) when is_integer(interval), do: interval * 1_000
+  defp parse_interval(nil), do: nil
   defp parse_interval(_), do: 5 * 60 * 1_000
+
+  defp parse_heal_policy("auto"), do: :auto
+  defp parse_heal_policy("manual"), do: :manual
+  defp parse_heal_policy("notify"), do: :notify
+  defp parse_heal_policy(_), do: :auto
 
   defp schedule_reconnect do
     Process.send_after(self(), :reconnect, @reconnect_delay)
