@@ -78,7 +78,7 @@ defmodule Nopea.Webhook.Router do
 
   # Prometheus metrics endpoint
   get "/metrics" do
-    metrics = TelemetryMetricsPrometheus.Core.scrape()
+    metrics = TelemetryMetricsPrometheus.Core.scrape(:nopea_metrics)
 
     conn
     |> put_resp_content_type("text/plain")
