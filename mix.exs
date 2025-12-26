@@ -40,8 +40,10 @@ defmodule Nopea.MixProject do
       # Web server (for webhooks)
       {:plug_cowboy, "~> 2.7"},
 
-      # Telemetry
+      # Telemetry & Metrics
       {:telemetry, "~> 1.2"},
+      {:telemetry_metrics, "~> 1.0"},
+      {:telemetry_metrics_prometheus_core, "~> 1.2"},
 
       # Dev/Test
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},

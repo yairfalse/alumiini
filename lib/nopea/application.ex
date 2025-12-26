@@ -51,6 +51,17 @@ defmodule Nopea.Application do
     # ULID generator (monotonic, needed for events)
     children = [Nopea.ULID]
 
+    # Prometheus metrics reporter
+    children =
+      if Application.get_env(:nopea, :enable_metrics, true) do
+        children ++
+          [
+            {TelemetryMetricsPrometheus.Core, metrics: Nopea.Metrics.metrics(), name: :nopea_metrics}
+          ]
+      else
+        children
+      end
+
     # CDEvents emitter (optional, enabled when endpoint is configured)
     children =
       case Application.get_env(:nopea, :cdevents_endpoint) do
@@ -122,8 +133,13 @@ defmodule Nopea.Application do
         children
       end
 
-    # Webhook HTTP server (always enabled for health/readiness probes)
-    children = children ++ [Nopea.Webhook.Router]
+    # Webhook HTTP server (for health/readiness probes and webhooks)
+    children =
+      if Application.get_env(:nopea, :enable_router, true) do
+        children ++ [Nopea.Webhook.Router]
+      else
+        children
+      end
 
     opts = [strategy: :one_for_one, name: Nopea.AppSupervisor]
     Supervisor.start_link(children, opts)

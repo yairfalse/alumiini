@@ -13,7 +13,7 @@ defmodule Nopea.Worker do
   use GenServer
   require Logger
 
-  alias Nopea.{Cache, Drift, Git, K8s, Applier, Events}
+  alias Nopea.{Cache, Drift, Git, K8s, Applier, Events, Metrics}
   alias Nopea.Events.Emitter
 
   defstruct [
@@ -198,6 +198,9 @@ defmodule Nopea.Worker do
     repo_path = repo_path(config.name)
     start_time = System.monotonic_time(:millisecond)
 
+    # Emit metrics start
+    metrics_start = Metrics.emit_sync_start(%{repo: config.name})
+
     Logger.info("Syncing repo: #{config.name} from #{config.url}")
     update_crd_status(state, :syncing, "Syncing from git")
 
@@ -228,6 +231,9 @@ defmodule Nopea.Worker do
       # Emit CDEvent
       emit_sync_event(state, new_state, count, duration_ms)
 
+      # Emit metrics success
+      Metrics.emit_sync_stop(metrics_start, %{repo: config.name, status: :ok})
+
       Logger.info("Sync completed for #{config.name}: commit=#{commit_sha}, manifests=#{count}")
       {:ok, new_state}
     else
@@ -239,9 +245,16 @@ defmodule Nopea.Worker do
         # Emit failure CDEvent
         emit_failure_event(state, reason, duration_ms)
 
+        # Emit metrics failure
+        Metrics.emit_sync_error(metrics_start, %{repo: config.name, error: error_type(reason)})
+
         error
     end
   end
+
+  defp error_type(reason) when is_atom(reason), do: reason
+  defp error_type({type, _}), do: type
+  defp error_type(_), do: :unknown
 
   defp apply_manifests_from_repo(state, repo_path) do
     config = state.config
@@ -494,6 +507,13 @@ defmodule Nopea.Worker do
     Enum.each(to_apply, fn {manifest, drift_type, _live} ->
       resource_key = Applier.resource_key(manifest)
       action = if MapSet.member?(skipped_keys, resource_key), do: :skipped, else: :healed
+
+      # Emit Prometheus metrics
+      Metrics.emit_drift_detected(%{repo: config.name, resource: resource_key})
+
+      if action == :healed do
+        Metrics.emit_drift_healed(%{repo: config.name, resource: resource_key})
+      end
 
       event =
         Events.drift_detected(config.name, %{

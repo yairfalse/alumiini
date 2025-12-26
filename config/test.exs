@@ -6,6 +6,8 @@ config :nopea,
   enable_controller: false,
   enable_git: false,
   enable_cache: false,
-  enable_supervisor: false
+  enable_supervisor: false,
+  enable_router: false,
+  enable_metrics: false
 
 config :logger, level: :warning

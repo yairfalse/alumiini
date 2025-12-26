@@ -76,6 +76,15 @@ defmodule Nopea.Webhook.Router do
     {:ok, body, conn}
   end
 
+  # Prometheus metrics endpoint
+  get "/metrics" do
+    metrics = TelemetryMetricsPrometheus.Core.scrape()
+
+    conn
+    |> put_resp_content_type("text/plain")
+    |> send_resp(200, metrics)
+  end
+
   # Liveness probe - checks if critical processes are alive
   get "/health" do
     checks = %{

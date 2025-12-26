@@ -9,7 +9,7 @@ defmodule Nopea.Supervisor do
   use DynamicSupervisor
   require Logger
 
-  alias Nopea.Worker
+  alias Nopea.{Metrics, Worker}
 
   def start_link(opts \\ []) do
     DynamicSupervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -31,6 +31,7 @@ defmodule Nopea.Supervisor do
     case DynamicSupervisor.start_child(__MODULE__, child_spec) do
       {:ok, pid} ->
         Logger.info("Started worker for repo: #{config.name}")
+        emit_worker_count()
         {:ok, pid}
 
       {:error, {:already_started, pid}} ->
@@ -54,8 +55,14 @@ defmodule Nopea.Supervisor do
       pid ->
         DynamicSupervisor.terminate_child(__MODULE__, pid)
         Logger.info("Stopped worker for repo: #{repo_name}")
+        emit_worker_count()
         :ok
     end
+  end
+
+  defp emit_worker_count do
+    count = length(list_workers())
+    Metrics.set_active_workers(count)
   end
 
   @doc """

@@ -37,6 +37,8 @@ defmodule Nopea.LeaderElection do
   use GenServer
   require Logger
 
+  alias Nopea.Metrics
+
   @lease_api_version "coordination.k8s.io/v1"
 
   defstruct [
@@ -328,6 +330,10 @@ defmodule Nopea.LeaderElection do
   end
 
   defp notify_controller(is_leader) do
+    # Emit leader change metrics
+    pod_name = System.get_env("POD_NAME", node() |> to_string())
+    Metrics.emit_leader_change(%{pod: pod_name, is_leader: is_leader})
+
     case Process.whereis(Nopea.Controller) do
       nil -> :ok
       pid -> send(pid, {:leader, is_leader})
