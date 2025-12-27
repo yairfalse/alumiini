@@ -1,0 +1,20 @@
+#!/bin/bash
+# Pre-commit hook that runs Sykli pipeline locally
+# Install: git config core.hooksPath .githooks
+
+set -e
+
+echo "🔄 Running Sykli delta (only changed files)..."
+
+# Check if sykli is installed
+if ! command -v sykli &> /dev/null; then
+    echo "⚠️  Sykli not installed. Skipping pre-commit checks."
+    echo "   Install from: https://github.com/yairfalse/sykli/releases"
+    exit 0
+fi
+
+# Run sykli delta - only runs tasks affected by staged changes
+# This is faster than running the full pipeline
+sykli delta
+
+echo "✅ Pre-commit checks passed!"
