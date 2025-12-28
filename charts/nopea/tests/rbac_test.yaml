@@ -1,0 +1,139 @@
+suite: RBAC tests
+templates:
+  - clusterrole.yaml
+  - clusterrolebinding.yaml
+  - serviceaccount.yaml
+tests:
+  # ClusterRole tests
+  - it: should create ClusterRole
+    template: clusterrole.yaml
+    asserts:
+      - isKind:
+          of: ClusterRole
+      - equal:
+          path: metadata.name
+          value: nopea
+
+  - it: should have GitRepository CRD permissions
+    template: clusterrole.yaml
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["nopea.io"]
+            resources: ["gitrepositories"]
+            verbs: ["get", "list", "watch", "patch", "update"]
+
+  - it: should have GitRepository status permissions
+    template: clusterrole.yaml
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["nopea.io"]
+            resources: ["gitrepositories/status"]
+            verbs: ["get", "patch", "update"]
+
+  - it: should have core resource permissions
+    template: clusterrole.yaml
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: [""]
+            resources:
+              - configmaps
+              - secrets
+              - services
+              - serviceaccounts
+              - persistentvolumeclaims
+              - namespaces
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  - it: should have apps resource permissions
+    template: clusterrole.yaml
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["apps"]
+            resources:
+              - deployments
+              - daemonsets
+              - replicasets
+              - statefulsets
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  - it: should have HPA permissions
+    template: clusterrole.yaml
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["autoscaling"]
+            resources:
+              - horizontalpodautoscalers
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  - it: should not have cluster role permissions by default
+    template: clusterrole.yaml
+    asserts:
+      - notContains:
+          path: rules
+          content:
+            resources:
+              - clusterroles
+              - clusterrolebindings
+          any: true
+
+  - it: should have cluster role permissions when enabled
+    template: clusterrole.yaml
+    set:
+      rbac:
+        manageClusterRoles: true
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["rbac.authorization.k8s.io"]
+            resources:
+              - clusterroles
+              - clusterrolebindings
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # ServiceAccount tests
+  - it: should create ServiceAccount
+    template: serviceaccount.yaml
+    asserts:
+      - isKind:
+          of: ServiceAccount
+      - equal:
+          path: metadata.name
+          value: nopea-controller
+
+  - it: should be in correct namespace
+    template: serviceaccount.yaml
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: nopea-system
+
+  # ClusterRoleBinding tests
+  - it: should create ClusterRoleBinding
+    template: clusterrolebinding.yaml
+    asserts:
+      - isKind:
+          of: ClusterRoleBinding
+      - equal:
+          path: roleRef.name
+          value: nopea
+
+  - it: should bind to correct service account
+    template: clusterrolebinding.yaml
+    asserts:
+      - contains:
+          path: subjects
+          content:
+            kind: ServiceAccount
+            name: nopea-controller
+            namespace: nopea-system

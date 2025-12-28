@@ -1,0 +1,76 @@
+suite: leader election tests
+templates:
+  - role-leader-election.yaml
+  - rolebinding-leader-election.yaml
+set:
+  leaderElection:
+    enabled: true
+tests:
+  # Role tests
+  - it: should create leader election Role
+    template: role-leader-election.yaml
+    asserts:
+      - isKind:
+          of: Role
+      - equal:
+          path: metadata.name
+          value: nopea-leader-election
+
+  - it: should have lease permissions
+    template: role-leader-election.yaml
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["coordination.k8s.io"]
+            resources: ["leases"]
+            verbs: ["get", "create", "update"]
+
+  # RoleBinding tests
+  - it: should create leader election RoleBinding
+    template: rolebinding-leader-election.yaml
+    asserts:
+      - isKind:
+          of: RoleBinding
+      - equal:
+          path: metadata.name
+          value: nopea-leader-election
+
+  - it: should bind to leader election role
+    template: rolebinding-leader-election.yaml
+    asserts:
+      - equal:
+          path: roleRef.name
+          value: nopea-leader-election
+      - equal:
+          path: roleRef.kind
+          value: Role
+
+  - it: should bind to service account
+    template: rolebinding-leader-election.yaml
+    asserts:
+      - contains:
+          path: subjects
+          content:
+            kind: ServiceAccount
+            name: nopea-controller
+            namespace: nopea-system
+
+  # Disabled tests
+  - it: should not create Role when leader election disabled
+    template: role-leader-election.yaml
+    set:
+      leaderElection:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should not create RoleBinding when leader election disabled
+    template: rolebinding-leader-election.yaml
+    set:
+      leaderElection:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

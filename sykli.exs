@@ -62,9 +62,15 @@ pipeline do
     inputs helm_inputs
   end
 
+  task "helm-test" do
+    run "helm unittest charts/nopea"
+    after_ ["helm-lint"]
+    inputs helm_inputs
+  end
+
   task "helm-template" do
     run "helm template nopea charts/nopea --debug > /dev/null"
-    after_ ["helm-lint"]
+    after_ ["helm-test"]
     inputs helm_inputs
   end
 end

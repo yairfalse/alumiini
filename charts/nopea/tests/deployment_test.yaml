@@ -1,0 +1,128 @@
+suite: deployment tests
+templates:
+  - deployment.yaml
+tests:
+  - it: should be a Deployment
+    asserts:
+      - isKind:
+          of: Deployment
+
+  - it: should have correct name
+    asserts:
+      - equal:
+          path: metadata.name
+          value: nopea-controller
+
+  - it: should use default namespace
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: nopea-system
+
+  - it: should have 1 replica by default
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+
+  - it: should have 2 replicas when configured
+    set:
+      replicas: 2
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+
+  - it: should set security context with non-root user
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 1000
+
+  - it: should drop all capabilities
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          content: ALL
+
+  - it: should have liveness probe on /health
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /health
+
+  - it: should have readiness probe on /ready
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /ready
+
+  - it: should set resource limits
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 500m
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 256Mi
+
+  - it: should not set leader election env vars when disabled
+    set:
+      leaderElection:
+        enabled: false
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NOPEA_LEADER_LEASE_NAME
+          any: true
+
+  - it: should set leader election env vars when enabled
+    set:
+      leaderElection:
+        enabled: true
+        leaseName: my-lease
+        leaseDuration: 20
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NOPEA_LEADER_LEASE_NAME
+            value: my-lease
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NOPEA_LEADER_LEASE_DURATION
+            value: "20"
+
+  - it: should set CDEvents endpoint when configured
+    set:
+      cdeventsEndpoint: "http://events.example.com"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NOPEA_CDEVENTS_ENDPOINT
+            value: "http://events.example.com"
+
+  - it: should mount SSH keys when configured
+    set:
+      sshKeys:
+        existingSecret: my-ssh-keys
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ssh-keys
+            mountPath: /root/.ssh
+            readOnly: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: ssh-keys
+            secret:
+              secretName: my-ssh-keys
+              defaultMode: 384  # 0600 in decimal
