@@ -48,9 +48,7 @@ defmodule Nopea.WorkerTest do
   describe "start_link/1" do
     @tag timeout: 30_000
     test "starts a worker with config", %{binary_available: available} = context do
-      unless available do
-        :ok
-      else
+      if available do
         config = test_config("start-link-test", context)
 
         assert {:ok, pid} = Worker.start_link(config)
@@ -63,6 +61,8 @@ defmodule Nopea.WorkerTest do
         assert state.config.name == config.name
 
         GenServer.stop(pid)
+      else
+        :ok
       end
     end
   end
@@ -70,9 +70,7 @@ defmodule Nopea.WorkerTest do
   describe "get_state/1" do
     @tag timeout: 30_000
     test "returns current worker state", %{binary_available: available} = context do
-      unless available do
-        :ok
-      else
+      if available do
         config = test_config("get-state-test", context)
 
         {:ok, pid} = Worker.start_link(config)
@@ -83,6 +81,8 @@ defmodule Nopea.WorkerTest do
         assert state.status in [:initializing, :syncing, :synced, :failed]
 
         GenServer.stop(pid)
+      else
+        :ok
       end
     end
   end
@@ -90,9 +90,7 @@ defmodule Nopea.WorkerTest do
   describe "sync_now/1" do
     @tag timeout: 60_000
     test "triggers immediate sync with real repo", %{binary_available: available} = context do
-      unless available do
-        :ok
-      else
+      if available do
         config = test_config("sync-now-test", context)
 
         {:ok, pid} = Worker.start_link(config)
@@ -111,6 +109,8 @@ defmodule Nopea.WorkerTest do
         assert state.status in [:synced, :failed]
 
         GenServer.stop(pid)
+      else
+        :ok
       end
     end
   end
@@ -118,9 +118,7 @@ defmodule Nopea.WorkerTest do
   describe "whereis/1" do
     @tag timeout: 30_000
     test "finds worker by repo name via Registry", %{binary_available: available} = context do
-      unless available do
-        :ok
-      else
+      if available do
         config = test_config("whereis-test", context)
 
         {:ok, pid} = Worker.start_link(config)
@@ -130,6 +128,8 @@ defmodule Nopea.WorkerTest do
         assert found_pid == pid
 
         GenServer.stop(pid)
+      else
+        :ok
       end
     end
   end
@@ -138,9 +138,7 @@ defmodule Nopea.WorkerTest do
     @tag timeout: 120_000
     test "successfully syncs from a real public repository",
          %{binary_available: available} = context do
-      unless available do
-        :ok
-      else
+      if available do
         config = test_config("real-repo-test", context)
 
         {:ok, pid} = Worker.start_link(config)
@@ -157,6 +155,8 @@ defmodule Nopea.WorkerTest do
         end
 
         GenServer.stop(pid)
+      else
+        :ok
       end
     end
   end

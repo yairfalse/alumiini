@@ -8,7 +8,7 @@ defmodule Nopea.MetricsTest do
       metrics = Metrics.metrics()
 
       assert is_list(metrics)
-      assert length(metrics) > 0
+      assert metrics != []
 
       # Check we have the key metrics
       metric_names = Enum.map(metrics, & &1.name)

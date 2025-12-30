@@ -188,9 +188,7 @@ defmodule Nopea.Webhook.Router do
     repo_name = conn.params["repo"]
 
     # Validate repo name to prevent log injection
-    unless Regex.match?(@repo_name_pattern, repo_name) do
-      send_resp(conn, 400, Jason.encode!(%{error: "invalid_repo_name"}))
-    else
+    if Regex.match?(@repo_name_pattern, repo_name) do
       headers = conn.req_headers
       raw_body = conn.private[:raw_body] || ""
 
@@ -204,6 +202,8 @@ defmodule Nopea.Webhook.Router do
         provider ->
           handle_webhook(conn, repo_name, provider, headers, raw_body)
       end
+    else
+      send_resp(conn, 400, Jason.encode!(%{error: "invalid_repo_name"}))
     end
   end
 
