@@ -8,7 +8,6 @@ defmodule Nopea.MixProject do
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      dialyzer: dialyzer(),
       description: "Fast GitOps controller for Kubernetes",
       package: package()
     ]
@@ -48,7 +47,6 @@ defmodule Nopea.MixProject do
 
       # Dev/Test
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:mox, "~> 1.1", only: :test}
     ]
@@ -59,15 +57,6 @@ defmodule Nopea.MixProject do
       name: "nopea",
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => "https://github.com/yairfalse/nopea"}
-    ]
-  end
-
-  defp dialyzer do
-    [
-      plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
-      plt_core_path: "priv/plts",
-      plt_local_path: "priv/plts",
-      flags: [:error_handling, :underspecs]
     ]
   end
 end
