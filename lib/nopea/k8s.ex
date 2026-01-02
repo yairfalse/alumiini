@@ -14,6 +14,7 @@ defmodule Nopea.K8s do
 
   @git_repository_api_version "nopea.io/v1alpha1"
   @git_repository_kind "GitRepository"
+  @git_repository_plural "gitrepositories"
 
   @doc """
   Returns a K8s connection.
@@ -46,28 +47,22 @@ defmodule Nopea.K8s do
   @spec update_status(String.t(), String.t(), map()) :: :ok | {:error, term()}
   def update_status(repo_name, namespace, status) do
     with {:ok, conn} <- conn() do
-      status_resource = %{
-        "apiVersion" => @git_repository_api_version,
-        "kind" => @git_repository_kind,
-        "metadata" => %{
-          "name" => repo_name,
-          "namespace" => namespace
-        },
-        "status" => status
-      }
+      # Use strategic merge patch for status subresource
+      patch_body = %{"status" => status}
 
-      # Use server-side apply for status updates
+      # For status subresource, use plural name with /status suffix
       operation =
-        K8s.Client.apply(
-          status_resource,
-          field_manager: "nopea",
-          force: true,
-          subresource: "status"
+        K8s.Client.patch(
+          @git_repository_api_version,
+          "#{@git_repository_plural}/status",
+          [namespace: namespace, name: repo_name],
+          patch_body,
+          :merge
         )
 
       case K8s.Client.run(conn, operation) do
         {:ok, _result} ->
-          Logger.debug("Updated status for #{namespace}/#{repo_name}")
+          Logger.info("Updated status for #{namespace}/#{repo_name}: #{status["phase"]}")
           :ok
 
         {:error, %K8s.Client.APIError{reason: "NotFound"}} ->
